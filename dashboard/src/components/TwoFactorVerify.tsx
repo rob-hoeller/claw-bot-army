@@ -105,11 +105,11 @@ export default function TwoFactorVerify({ email, onBack }: TwoFactorVerifyProps)
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"
-            maxLength={6}
-            placeholder="000000"
+            maxLength={8}
+            placeholder="00000000"
             value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-            className="w-full bg-black border border-gray-800 text-white px-4 py-4 rounded-lg focus:outline-none focus:border-gray-600 transition-colors text-center text-2xl tracking-[0.3em] font-mono"
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+            className="w-full bg-black border border-gray-800 text-white px-4 py-4 rounded-lg focus:outline-none focus:border-gray-600 transition-colors text-center text-xl tracking-[0.2em] font-mono"
             required
             autoFocus
           />
@@ -120,7 +120,7 @@ export default function TwoFactorVerify({ email, onBack }: TwoFactorVerifyProps)
 
           <button
             type="submit"
-            disabled={loading || code.length !== 6}
+            disabled={loading || code.length !== 8}
             className="w-full bg-white text-black font-medium py-3 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
           >
             {loading ? 'Verifying...' : 'Verify'}
