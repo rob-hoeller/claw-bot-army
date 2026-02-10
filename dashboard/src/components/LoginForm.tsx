@@ -6,7 +6,7 @@ import { Mail, Loader2, AlertCircle } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface LoginFormProps {
   onNeed2FA?: (email: string) => void
@@ -59,30 +59,29 @@ export default function LoginForm({ onNeed2FA }: LoginFormProps) {
       transition={{ duration: 0.4, ease: "easeOut" }}
       className="w-full max-w-md px-4"
     >
-      <Card className="border-white/10 bg-gradient-to-b from-white/[0.05] to-transparent backdrop-blur-xl">
+      <Card className="border-purple-500/20 bg-gradient-to-b from-purple-500/10 via-purple-900/5 to-transparent backdrop-blur-xl shadow-[0_0_50px_-12px_rgba(147,51,234,0.25)]">
         <CardHeader className="space-y-1 text-center pb-2">
-          {/* Brand Logo */}
+          {/* Robot Icon */}
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ delay: 0.1, duration: 0.3 }}
             className="flex justify-center mb-4"
           >
-            <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-white/10 to-white/5 border border-white/10">
-              <span className="text-2xl font-bold tracking-tight">
-                <span className="text-white/80">H</span>
-                <span className="text-white/80">B</span>
-                <span className="text-white/60">x</span>
-              </span>
+            <div className="flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-900/50 to-slate-900/80 border border-purple-500/20 shadow-lg">
+              <svg className="w-10 h-10 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="4" y="8" width="16" height="12" rx="3" />
+                <circle cx="9" cy="14" r="1.5" fill="currentColor" stroke="none" />
+                <circle cx="15" cy="14" r="1.5" fill="currentColor" stroke="none" />
+                <path d="M12 2v4" />
+                <path d="M8 4h8" />
+              </svg>
             </div>
           </motion.div>
           
           <CardTitle className="text-2xl font-semibold text-white">
-            Welcome back
+            Welcome Back!
           </CardTitle>
-          <CardDescription className="text-white/40">
-            Sign in to Master Orchestrator
-          </CardDescription>
         </CardHeader>
 
         <CardContent className="pt-4">
