@@ -11,12 +11,14 @@ import {
   Pencil,
   Save,
   FileText,
+  Plus,
+  Rocket,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import PageHeader from "@/components/PageHeader"
 
 // Agent data structure
 interface AgentFile {
@@ -155,6 +157,8 @@ Role: Agent Designer & Skill Creator` },
   ],
 }
 
+const departments = ["Platform", "Sales", "Warranty", "Construction", "Start Up", "Settlement", "Design", "QA"]
+
 // Agent Card Component
 function AgentCard({
   agent,
@@ -207,6 +211,150 @@ function AgentCard({
         </Badge>
       </div>
     </motion.button>
+  )
+}
+
+// Add Agent Card
+function AddAgentCard({ onClick }: { onClick: () => void }) {
+  return (
+    <motion.button
+      whileHover={{ scale: 1.02 }}
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
+      className="flex flex-col items-center justify-center p-4 rounded-xl border border-dashed border-white/20 bg-white/[0.01] hover:border-purple-500/50 hover:bg-purple-500/5 transition-all min-w-[160px] min-h-[140px]"
+    >
+      <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-white/5 border border-white/10 mb-3">
+        <Plus className="h-6 w-6 text-white/40" />
+      </div>
+      <p className="text-sm font-medium text-white/40">Add Agent</p>
+    </motion.button>
+  )
+}
+
+// New Agent Panel
+function NewAgentPanel({ onClose }: { onClose: () => void }) {
+  const [agentId, setAgentId] = useState("")
+  const [agentName, setAgentName] = useState("")
+  const [agentRole, setAgentRole] = useState("")
+  const [agentDept, setAgentDept] = useState("Sales")
+  const [launching, setLaunching] = useState(false)
+
+  const handleLaunch = async () => {
+    setLaunching(true)
+    // TODO: Create agent files and spawn
+    await new Promise((r) => setTimeout(r, 1500))
+    setLaunching(false)
+    onClose()
+  }
+
+  const isValid = agentId && agentName && agentRole && agentDept
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      className="fixed right-0 top-0 h-full w-full max-w-lg border-l border-white/10 bg-black/95 backdrop-blur-xl z-50 overflow-hidden flex flex-col"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/20">
+            <Plus className="h-5 w-5 text-purple-400" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-white">New Agent</h2>
+            <p className="text-xs text-white/40">Configure and launch</p>
+          </div>
+        </div>
+        <Button variant="ghost" size="icon" onClick={onClose}>
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {/* Form */}
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-white/70">Agent ID</label>
+          <Input
+            placeholder="HBx_XX1"
+            value={agentId}
+            onChange={(e) => setAgentId(e.target.value)}
+          />
+          <p className="text-xs text-white/40">Unique identifier (e.g., HBx_WR1 for Warranty)</p>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-white/70">Display Name</label>
+          <Input
+            placeholder="Agent name"
+            value={agentName}
+            onChange={(e) => setAgentName(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-white/70">Role</label>
+          <Input
+            placeholder="What does this agent do?"
+            value={agentRole}
+            onChange={(e) => setAgentRole(e.target.value)}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-white/70">Department</label>
+          <div className="grid grid-cols-2 gap-2">
+            {departments.map((dept) => (
+              <button
+                key={dept}
+                onClick={() => setAgentDept(dept)}
+                className={cn(
+                  "px-3 py-2 rounded-lg text-sm font-medium transition-all",
+                  agentDept === dept
+                    ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                    : "bg-white/5 text-white/60 border border-white/10 hover:bg-white/10"
+                )}
+              >
+                {dept}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
+          <p className="text-xs text-white/40 mb-2">Files to be created:</p>
+          <div className="flex flex-wrap gap-2">
+            {["SOUL.md", "IDENTITY.md", "AGENTS.md", "TOOLS.md", "MEMORY.md", "HEARTBEAT.md"].map((file) => (
+              <span key={file} className="px-2 py-1 rounded bg-white/5 text-xs text-white/60">
+                {file}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-white/10 p-6">
+        <Button
+          className="w-full"
+          disabled={!isValid || launching}
+          onClick={handleLaunch}
+        >
+          {launching ? (
+            <>
+              <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+              Launching...
+            </>
+          ) : (
+            <>
+              <Rocket className="h-4 w-4 mr-2" />
+              Launch Agent
+            </>
+          )}
+        </Button>
+      </div>
+    </motion.div>
   )
 }
 
@@ -352,14 +500,10 @@ function AgentDetailPanel({
 // Main Agents Page
 export default function AgentsPage() {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
+  const [showNewAgent, setShowNewAgent] = useState(false)
 
   return (
-    <div>
-      <PageHeader
-        title="🚀 Agent DNA"
-        description="Organizational structure and governing elements"
-      />
-
+    <div className="pt-8">
       {/* Org Chart */}
       <div className="relative">
         {/* Root Agent (HBx) */}
@@ -383,7 +527,7 @@ export default function AgentsPage() {
           {agentTree.children && (
             <div className="flex flex-wrap justify-center gap-4 mt-2">
               {/* Horizontal connector */}
-              <div className="absolute w-[calc(100%-200px)] max-w-lg h-px bg-white/10 -mt-6 left-1/2 -translate-x-1/2" />
+              <div className="absolute w-[calc(100%-200px)] max-w-xl h-px bg-white/10 -mt-6 left-1/2 -translate-x-1/2" />
               
               {agentTree.children.map((child) => (
                 <div key={child.id} className="flex flex-col items-center">
@@ -395,16 +539,21 @@ export default function AgentsPage() {
                   />
                 </div>
               ))}
+              
+              {/* Add Agent Card */}
+              <div className="flex flex-col items-center">
+                <div className="w-px h-4 bg-white/10 -mt-2 mb-2 opacity-0" />
+                <AddAgentCard onClick={() => setShowNewAgent(true)} />
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      {/* Agent Detail Panel */}
+      {/* Panels */}
       <AnimatePresence>
         {selectedAgent && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -416,6 +565,19 @@ export default function AgentsPage() {
               agent={selectedAgent}
               onClose={() => setSelectedAgent(null)}
             />
+          </>
+        )}
+        
+        {showNewAgent && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
+              onClick={() => setShowNewAgent(false)}
+            />
+            <NewAgentPanel onClose={() => setShowNewAgent(false)} />
           </>
         )}
       </AnimatePresence>
