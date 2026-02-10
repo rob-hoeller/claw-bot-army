@@ -1,7 +1,11 @@
-'use client'
+"use client"
 
-import { useState, useEffect, useRef } from 'react'
-import { supabase } from '@/lib/supabase'
+import { useState, useRef, useEffect } from "react"
+import { motion } from "framer-motion"
+import { Mail, ArrowLeft, Loader2, AlertCircle, RefreshCw } from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface TwoFactorVerifyProps {
   email: string
@@ -9,142 +13,207 @@ interface TwoFactorVerifyProps {
 }
 
 export default function TwoFactorVerify({ email, onBack }: TwoFactorVerifyProps) {
-  const [code, setCode] = useState('')
+  const [code, setCode] = useState(["", "", "", "", "", ""])
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [sent, setSent] = useState(false)
-  const sentRef = useRef(false)
+  const [loading, setLoading] = useState(false)
+  const [resending, setResending] = useState(false)
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([])
 
+  // Send OTP on mount
   useEffect(() => {
-    if (sentRef.current) return
-    sentRef.current = true
+    sendOTP()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-    const doSend = async () => {
-      if (!supabase) {
-        setLoading(false)
-        return
-      }
-
-      const { error } = await supabase.auth.signInWithOtp({
-        email,
-        options: {
-          shouldCreateUser: false,
-        }
-      })
-
-      if (error) {
-        setError(error.message)
-      } else {
-        setSent(true)
-      }
-      setLoading(false)
-    }
-
-    doSend()
-  }, [email])
-
-  const resendCode = async () => {
+  const sendOTP = async () => {
     if (!supabase) return
-    setLoading(true)
+    setResending(true)
     setError(null)
 
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
         shouldCreateUser: false,
-      }
+      },
     })
 
     if (error) {
       setError(error.message)
-    } else {
-      setSent(true)
     }
-    setLoading(false)
+    setResending(false)
   }
 
-  const verifyCode = async (e: React.FormEvent) => {
+  const handleChange = (index: number, value: string) => {
+    if (!/^\d*$/.test(value)) return
+
+    const newCode = [...code]
+    newCode[index] = value.slice(-1)
+    setCode(newCode)
+
+    // Auto-focus next input
+    if (value && index < 5) {
+      inputRefs.current[index + 1]?.focus()
+    }
+
+    // Auto-submit when complete
+    if (newCode.every((c) => c) && newCode.join("").length === 6) {
+      verifyOTP(newCode.join(""))
+    }
+  }
+
+  const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === "Backspace" && !code[index] && index > 0) {
+      inputRefs.current[index - 1]?.focus()
+    }
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault()
+    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6)
+    const newCode = [...code]
+    for (let i = 0; i < pastedData.length; i++) {
+      newCode[i] = pastedData[i]
+    }
+    setCode(newCode)
+    if (pastedData.length === 6) {
+      verifyOTP(pastedData)
+    }
+  }
+
+  const verifyOTP = async (otpCode: string) => {
     if (!supabase) return
     setError(null)
     setLoading(true)
 
     const { error } = await supabase.auth.verifyOtp({
       email,
-      token: code,
-      type: 'email'
+      token: otpCode,
+      type: "email",
     })
 
     if (error) {
-      setError(error.message)
+      setError("Invalid code. Please try again.")
+      setCode(["", "", "", "", "", ""])
+      inputRefs.current[0]?.focus()
     }
     setLoading(false)
   }
 
   return (
-    <div className="w-full max-w-sm">
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8">
-        <h2 className="text-xl font-medium text-white text-center mb-2">
-          Two-Factor Authentication
-        </h2>
-        <p className="text-gray-500 text-center text-sm mb-2">
-          Enter the code sent to
-        </p>
-        <p className="text-gray-300 text-center text-sm mb-6">
-          {email}
-        </p>
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+      className="w-full max-w-md px-4"
+    >
+      <Card className="border-white/10 bg-gradient-to-b from-white/[0.05] to-transparent backdrop-blur-xl">
+        <CardHeader className="space-y-1 text-center pb-2">
+          {/* Icon */}
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.1, duration: 0.3 }}
+            className="flex justify-center mb-4"
+          >
+            <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-white/10">
+              <Mail className="h-7 w-7 text-blue-400" />
+            </div>
+          </motion.div>
 
-        {sent && (
-          <p className="text-green-500 text-center text-sm mb-4">
-            Code sent! Check your email.
-          </p>
-        )}
+          <CardTitle className="text-2xl font-semibold text-white">
+            Check your email
+          </CardTitle>
+          <CardDescription className="text-white/40">
+            We sent a verification code to
+            <br />
+            <span className="text-white/60 font-medium">{email}</span>
+          </CardDescription>
+        </CardHeader>
 
-        <form onSubmit={verifyCode} className="space-y-4">
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={8}
-            placeholder="00000000"
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
-            className="w-full bg-black border border-gray-800 text-white px-4 py-4 rounded-lg focus:outline-none focus:border-gray-600 transition-colors text-center text-xl tracking-[0.2em] font-mono"
-            required
-            autoFocus
-          />
-
+        <CardContent className="pt-4">
+          {/* Error Banner */}
           {error && (
-            <p className="text-red-500 text-sm text-center">{error}</p>
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mb-6 flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3"
+            >
+              <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+              <p className="text-sm text-red-400">{error}</p>
+            </motion.div>
           )}
 
-          <button
-            type="submit"
-            disabled={loading || code.length !== 8}
-            className="w-full bg-white text-black font-medium py-3 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
-          >
-            {loading ? 'Verifying...' : 'Verify'}
-          </button>
-
-          <div className="flex justify-between text-sm">
-            <button
-              type="button"
-              onClick={onBack}
-              className="text-gray-500 hover:text-white transition-colors"
-            >
-              ← Back
-            </button>
-            <button
-              type="button"
-              onClick={resendCode}
-              disabled={loading}
-              className="text-gray-500 hover:text-white transition-colors disabled:opacity-50"
-            >
-              Resend code
-            </button>
+          {/* Code Input */}
+          <div className="flex justify-center gap-2 mb-6" onPaste={handlePaste}>
+            {code.map((digit, index) => (
+              <input
+                key={index}
+                ref={(el) => { inputRefs.current[index] = el }}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={digit}
+                onChange={(e) => handleChange(index, e.target.value)}
+                onKeyDown={(e) => handleKeyDown(index, e)}
+                disabled={loading}
+                className="w-12 h-14 text-center text-xl font-semibold rounded-lg border border-white/10 bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-white/20 focus:border-white/20 disabled:opacity-50 transition-all"
+              />
+            ))}
           </div>
-        </form>
-      </div>
-    </div>
+
+          {/* Loading State */}
+          {loading && (
+            <div className="flex items-center justify-center gap-2 mb-6 text-white/60">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm">Verifying...</span>
+            </div>
+          )}
+
+          {/* Resend */}
+          <div className="text-center mb-6">
+            <p className="text-sm text-white/40 mb-2">
+              Didn&apos;t receive the code?
+            </p>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={sendOTP}
+              disabled={resending}
+              className="text-white/70 hover:text-white"
+            >
+              {resending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Resend code
+                </>
+              )}
+            </Button>
+          </div>
+
+          {/* Back Button */}
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={onBack}
+            disabled={loading}
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back to sign in
+          </Button>
+
+          {/* Footer */}
+          <div className="mt-6 pt-6 border-t border-white/5 text-center">
+            <p className="text-xs text-white/30">
+              Schell Brothers AI Agent Network
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
   )
 }

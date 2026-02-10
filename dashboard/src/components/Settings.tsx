@@ -1,25 +1,50 @@
-'use client'
+"use client"
 
-import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { User } from '@supabase/supabase-js'
+import { useState } from "react"
+import { motion } from "framer-motion"
+import {
+  User as UserIcon,
+  Shield,
+  Key,
+  Clock,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  X,
+} from "lucide-react"
+import { supabase } from "@/lib/supabase"
+import { User } from "@supabase/supabase-js"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import CardSection from "@/components/CardSection"
+import PageHeader from "@/components/PageHeader"
 
 interface SettingsProps {
   user: User
-  onClose: () => void
+  onClose?: () => void
   onUpdate: () => void
+  embedded?: boolean
 }
 
-export default function Settings({ user, onClose, onUpdate }: SettingsProps) {
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
+export default function Settings({ user, onClose, onUpdate, embedded = false }: SettingsProps) {
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'account' | 'security'>('account')
-  
+  const [activeTab, setActiveTab] = useState("account")
+
   const has2FA = user.user_metadata?.two_factor_enabled || false
+
+  const initials = (user.user_metadata?.full_name || user.email || "U")
+    .split(" ")
+    .map((n: string) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2)
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -27,33 +52,33 @@ export default function Settings({ user, onClose, onUpdate }: SettingsProps) {
     setMessage(null)
 
     if (newPassword !== confirmPassword) {
-      setError('Passwords do not match')
+      setError("Passwords do not match")
       return
     }
 
     if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters')
+      setError("Password must be at least 8 characters")
       return
     }
 
     setLoading(true)
 
     if (!supabase) {
-      setError('System not configured')
+      setError("System not configured")
       setLoading(false)
       return
     }
 
     const { error } = await supabase.auth.updateUser({
-      password: newPassword
+      password: newPassword,
     })
 
     if (error) {
       setError(error.message)
     } else {
-      setMessage('Password updated successfully!')
-      setNewPassword('')
-      setConfirmPassword('')
+      setMessage("Password updated successfully!")
+      setNewPassword("")
+      setConfirmPassword("")
     }
     setLoading(false)
   }
@@ -66,207 +91,262 @@ export default function Settings({ user, onClose, onUpdate }: SettingsProps) {
 
     const { error } = await supabase.auth.updateUser({
       data: {
-        two_factor_enabled: !has2FA
-      }
+        two_factor_enabled: !has2FA,
+      },
     })
 
     if (error) {
       setError(error.message)
     } else {
-      setMessage(has2FA ? 'Two-factor authentication disabled' : 'Two-factor authentication enabled!')
+      setMessage(
+        has2FA
+          ? "Two-factor authentication disabled"
+          : "Two-factor authentication enabled!"
+      )
       onUpdate()
     }
     setLoading(false)
   }
 
-  return (
-    <div className="w-full max-w-lg">
-      <div className="bg-gradient-to-b from-gray-900 to-gray-950 border border-gray-800 rounded-3xl overflow-hidden shadow-2xl">
-        
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-800">
-          <h2 className="text-xl font-semibold text-white">Settings</h2>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-all"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+  const content = (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2 }}
+    >
+      {/* Messages */}
+      {error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3"
+        >
+          <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+          <p className="text-sm text-red-400">{error}</p>
+        </motion.div>
+      )}
+      {message && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-6 flex items-center gap-2 rounded-lg bg-green-500/10 border border-green-500/20 px-4 py-3"
+        >
+          <CheckCircle2 className="h-4 w-4 text-green-400 shrink-0" />
+          <p className="text-sm text-green-400">{message}</p>
+        </motion.div>
+      )}
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-800">
-          <button
-            onClick={() => setActiveTab('account')}
-            className={`flex-1 py-4 text-sm font-medium transition-all ${
-              activeTab === 'account'
-                ? 'text-white border-b-2 border-white'
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList className="w-full justify-start mb-6">
+          <TabsTrigger value="account" className="gap-2">
+            <UserIcon className="h-4 w-4" />
             Account
-          </button>
-          <button
-            onClick={() => setActiveTab('security')}
-            className={`flex-1 py-4 text-sm font-medium transition-all ${
-              activeTab === 'security'
-                ? 'text-white border-b-2 border-white'
-                : 'text-gray-500 hover:text-gray-300'
-            }`}
-          >
+          </TabsTrigger>
+          <TabsTrigger value="security" className="gap-2">
+            <Shield className="h-4 w-4" />
             Security
-          </button>
-        </div>
+            {has2FA && (
+              <Badge variant="success" className="ml-1 py-0">
+                2FA
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
 
-        <div className="p-6">
-          {/* Messages */}
-          {error && (
-            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-              <p className="text-red-400 text-sm">{error}</p>
-            </div>
-          )}
-          {message && (
-            <div className="mb-4 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
-              <p className="text-green-400 text-sm">{message}</p>
-            </div>
-          )}
-
-          {activeTab === 'account' ? (
-            <div className="space-y-6">
-              {/* Profile Card */}
-              <div className="bg-gray-800/50 rounded-2xl p-5">
-                <div className="flex items-center gap-4 mb-4">
-                  <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-xl font-semibold">
-                    {(user.user_metadata?.full_name || user.email || '?')[0].toUpperCase()}
-                  </div>
+        <TabsContent value="account" className="space-y-6">
+          <CardSection title="Profile Information">
+            <div className="flex items-start gap-6">
+              <Avatar className="h-20 w-20 text-2xl">
+                <AvatarFallback>{initials}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
                   <div>
-                    <p className="text-white font-medium">{user.user_metadata?.full_name || 'User'}</p>
-                    <p className="text-gray-400 text-sm">{user.email}</p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-700">
-                  <div>
-                    <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Role</p>
-                    <p className="text-white text-sm">{user.user_metadata?.role || 'Admin'}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 text-xs uppercase tracking-wide mb-1">Status</p>
-                    <span className="inline-flex items-center gap-1.5 text-green-400 text-sm">
-                      <span className="w-2 h-2 bg-green-400 rounded-full"></span>
-                      Active
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* 2FA Toggle */}
-              <div className="bg-gray-800/50 rounded-2xl p-5">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                      </svg>
-                      <h3 className="text-white font-medium">Two-Factor Authentication</h3>
-                    </div>
-                    <p className="text-gray-400 text-sm">
-                      Require an email verification code when signing in
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">
+                      Full Name
+                    </label>
+                    <p className="mt-1 text-white">
+                      {user.user_metadata?.full_name || "Not set"}
                     </p>
                   </div>
-                  <button
-                    onClick={toggle2FA}
-                    disabled={loading}
-                    className={`relative w-14 h-8 rounded-full transition-colors ${
-                      has2FA ? 'bg-green-500' : 'bg-gray-700'
-                    } ${loading ? 'opacity-50' : ''}`}
-                  >
-                    <span className={`absolute top-1 w-6 h-6 bg-white rounded-full shadow-lg transition-transform ${
-                      has2FA ? 'left-7' : 'left-1'
-                    }`} />
-                  </button>
-                </div>
-                {has2FA && (
-                  <div className="mt-4 pt-4 border-t border-gray-700">
-                    <div className="flex items-center gap-2 text-green-400 text-sm">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                      2FA is enabled. You&apos;ll receive a code via email on each login.
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">
+                      Email
+                    </label>
+                    <p className="mt-1 text-white">{user.email}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">
+                      Role
+                    </label>
+                    <p className="mt-1 text-white">
+                      {user.user_metadata?.role || "Admin"}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">
+                      Status
+                    </label>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-green-500" />
+                      <span className="text-green-400">Active</span>
                     </div>
                   </div>
-                )}
-              </div>
-
-              {/* Change Password */}
-              <div className="bg-gray-800/50 rounded-2xl p-5">
-                <div className="flex items-center gap-2 mb-4">
-                  <svg className="w-5 h-5 text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                  </svg>
-                  <h3 className="text-white font-medium">Change Password</h3>
                 </div>
-                
-                <form onSubmit={handleChangePassword} className="space-y-4">
-                  <div>
-                    <label className="block text-gray-400 text-sm mb-2">New Password</label>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Enter new password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="w-full bg-gray-900 border border-gray-700 text-white px-4 py-3 rounded-xl focus:outline-none focus:border-gray-500 transition-colors"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-gray-400 text-sm mb-2">Confirm Password</label>
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      placeholder="Confirm new password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="w-full bg-gray-900 border border-gray-700 text-white px-4 py-3 rounded-xl focus:outline-none focus:border-gray-500 transition-colors"
-                    />
-                  </div>
-
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative">
-                      <input
-                        type="checkbox"
-                        checked={showPassword}
-                        onChange={(e) => setShowPassword(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-5 h-5 bg-gray-900 border border-gray-700 rounded-md peer-checked:bg-blue-500 peer-checked:border-blue-500 transition-all">
-                        {showPassword && (
-                          <svg className="w-5 h-5 text-white p-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </div>
-                    </div>
-                    <span className="text-gray-400 text-sm group-hover:text-gray-300 transition-colors">
-                      Show passwords
-                    </span>
-                  </label>
-
-                  <button
-                    type="submit"
-                    disabled={loading || !newPassword || !confirmPassword}
-                    className="w-full bg-white text-black font-medium py-3 rounded-xl hover:bg-gray-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {loading ? 'Updating...' : 'Update Password'}
-                  </button>
-                </form>
               </div>
             </div>
+          </CardSection>
+        </TabsContent>
+
+        <TabsContent value="security" className="space-y-6">
+          {/* 2FA Section */}
+          <CardSection
+            title="Two-Factor Authentication"
+            description="Add an extra layer of security to your account"
+            action={
+              <Badge variant={has2FA ? "success" : "outline"}>
+                {has2FA ? "Enabled" : "Disabled"}
+              </Badge>
+            }
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-start gap-4">
+                <div className="rounded-lg bg-blue-500/10 p-2.5">
+                  <Shield className="h-5 w-5 text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-sm text-white">Email Verification</p>
+                  <p className="text-xs text-white/40 mt-0.5">
+                    Receive a code via email on each sign in
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant={has2FA ? "outline" : "default"}
+                size="sm"
+                onClick={toggle2FA}
+                disabled={loading}
+              >
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : has2FA ? (
+                  "Disable"
+                ) : (
+                  "Enable"
+                )}
+              </Button>
+            </div>
+          </CardSection>
+
+          {/* Password Section */}
+          <CardSection
+            title="Change Password"
+            description="Update your password to keep your account secure"
+          >
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/70">
+                    New Password
+                  </label>
+                  <div className="relative">
+                    <Key className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+                    <Input
+                      type="password"
+                      placeholder="••••••••"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-white/70">
+                    Confirm Password
+                  </label>
+                  <Input
+                    type="password"
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end">
+                <Button
+                  type="submit"
+                  disabled={loading || !newPassword || !confirmPassword}
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Updating...
+                    </>
+                  ) : (
+                    "Update Password"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardSection>
+
+          {/* Sessions Section */}
+          <CardSection
+            title="Active Sessions"
+            description="Manage your active sessions across devices"
+          >
+            <div className="flex items-center justify-between p-4 rounded-lg bg-white/[0.02] border border-white/5">
+              <div className="flex items-center gap-4">
+                <div className="rounded-lg bg-green-500/10 p-2.5">
+                  <Clock className="h-5 w-5 text-green-400" />
+                </div>
+                <div>
+                  <p className="text-sm text-white">Current Session</p>
+                  <p className="text-xs text-white/40 mt-0.5">
+                    Active now • This device
+                  </p>
+                </div>
+              </div>
+              <Badge variant="success">Current</Badge>
+            </div>
+          </CardSection>
+        </TabsContent>
+      </Tabs>
+    </motion.div>
+  )
+
+  // If embedded in the app shell, render without the modal wrapper
+  if (embedded) {
+    return (
+      <div>
+        <PageHeader
+          title="Settings"
+          description="Manage your account settings and security preferences"
+        />
+        {content}
+      </div>
+    )
+  }
+
+  // Modal view (for non-app-shell contexts)
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.2 }}
+      className="w-full max-w-2xl px-4"
+    >
+      <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.05] to-transparent backdrop-blur-xl overflow-hidden">
+        <div className="flex items-center justify-between border-b border-white/5 px-6 py-4">
+          <h2 className="text-lg font-semibold text-white">Settings</h2>
+          {onClose && (
+            <Button variant="ghost" size="icon" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
           )}
         </div>
+        <div className="p-6">{content}</div>
       </div>
-    </div>
+    </motion.div>
   )
 }
