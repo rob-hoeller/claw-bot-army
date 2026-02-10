@@ -13,7 +13,7 @@ interface TwoFactorVerifyProps {
 }
 
 export default function TwoFactorVerify({ email, onBack }: TwoFactorVerifyProps) {
-  const [code, setCode] = useState(["", "", "", "", "", ""])
+  const [code, setCode] = useState(["", "", "", "", "", "", "", ""])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [resending, setResending] = useState(false)
@@ -51,12 +51,12 @@ export default function TwoFactorVerify({ email, onBack }: TwoFactorVerifyProps)
     setCode(newCode)
 
     // Auto-focus next input
-    if (value && index < 5) {
+    if (value && index < 7) {
       inputRefs.current[index + 1]?.focus()
     }
 
     // Auto-submit when complete
-    if (newCode.every((c) => c) && newCode.join("").length === 6) {
+    if (newCode.every((c) => c) && newCode.join("").length === 8) {
       verifyOTP(newCode.join(""))
     }
   }
@@ -69,13 +69,13 @@ export default function TwoFactorVerify({ email, onBack }: TwoFactorVerifyProps)
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault()
-    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6)
+    const pastedData = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 8)
     const newCode = [...code]
     for (let i = 0; i < pastedData.length; i++) {
       newCode[i] = pastedData[i]
     }
     setCode(newCode)
-    if (pastedData.length === 6) {
+    if (pastedData.length === 8) {
       verifyOTP(pastedData)
     }
   }
@@ -93,7 +93,7 @@ export default function TwoFactorVerify({ email, onBack }: TwoFactorVerifyProps)
 
     if (error) {
       setError("Invalid code. Please try again.")
-      setCode(["", "", "", "", "", ""])
+      setCode(["", "", "", "", "", "", "", ""])
       inputRefs.current[0]?.focus()
     }
     setLoading(false)
@@ -156,7 +156,7 @@ export default function TwoFactorVerify({ email, onBack }: TwoFactorVerifyProps)
                 onChange={(e) => handleChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
                 disabled={loading}
-                className="w-12 h-14 text-center text-xl font-semibold rounded-lg border border-white/10 bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-white/20 focus:border-white/20 disabled:opacity-50 transition-all"
+                className="w-10 h-12 sm:w-11 sm:h-14 text-center text-lg sm:text-xl font-semibold rounded-lg border border-white/10 bg-white/5 text-white focus:outline-none focus:ring-2 focus:ring-white/20 focus:border-white/20 disabled:opacity-50 transition-all"
               />
             ))}
           </div>
