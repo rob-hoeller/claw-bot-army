@@ -88,14 +88,7 @@ export default function Sidebar({ currentPage, onNavigate, open, onClose }: Side
           })}
         </nav>
 
-        {/* Bottom section */}
-        <div className="absolute bottom-0 left-0 right-0 border-t border-white/5 p-4">
-          <div className="rounded-lg bg-white/5 p-3">
-            <p className="text-xs text-white/40">Platform Version</p>
-            <p className="text-sm font-medium text-white/70">v1.0.0</p>
-          </div>
-        </div>
-      </aside>
+        </aside>
     </>
   )
 }

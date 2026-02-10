@@ -43,17 +43,14 @@ export default function Header({ user, onSignOut, onSettingsClick, onMenuClick }
               <Menu className="h-5 w-5" />
             </Button>
           )}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center">
-              <span className="text-xl font-bold tracking-tight">
-                <span className="text-white/70">H</span>
-                <span className="text-white/70">B</span>
-                <span className="text-white/50">x</span>
-              </span>
-            </div>
-            <div className="hidden sm:block h-6 w-px bg-white/10" />
-            <span className="hidden sm:block text-xs text-white/40 tracking-wide">
-              Master Orchestrator
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-bold tracking-tight">
+              <span className="text-white/70">H</span>
+              <span className="text-white/70">B</span>
+              <span className="text-white/50">x</span>
+            </span>
+            <span className="text-xs text-white/30 font-medium">
+              v1.0.0
             </span>
           </div>
         </div>
