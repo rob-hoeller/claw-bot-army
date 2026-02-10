@@ -1,0 +1,10 @@
+{
+  "name": "claw-bot-army",
+  "private": true,
+  "scripts": {
+    "lint": "cd dashboard && npm run lint",
+    "build": "cd dashboard && npm run build",
+    "dev": "cd dashboard && npm run dev",
+    "install:dashboard": "cd dashboard && npm install"
+  }
+}
