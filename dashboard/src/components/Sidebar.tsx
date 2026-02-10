@@ -9,6 +9,9 @@ import {
   FileText,
   Settings,
   X,
+  ChevronLeft,
+  ChevronRight,
+  Bot,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -17,10 +20,13 @@ interface SidebarProps {
   onNavigate: (page: string) => void
   open?: boolean
   onClose?: () => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
 const navItems = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "agents", label: "Agents", icon: Bot },
   { id: "users", label: "Users", icon: Users },
   { id: "roles", label: "Roles", icon: Shield },
   { id: "tenants", label: "Business Units", icon: Building2 },
@@ -28,7 +34,14 @@ const navItems = [
   { id: "settings", label: "Settings", icon: Settings },
 ]
 
-export default function Sidebar({ currentPage, onNavigate, open, onClose }: SidebarProps) {
+export default function Sidebar({ 
+  currentPage, 
+  onNavigate, 
+  open, 
+  onClose,
+  collapsed = false,
+  onToggleCollapse,
+}: SidebarProps) {
   return (
     <>
       {/* Mobile overlay */}
@@ -42,7 +55,8 @@ export default function Sidebar({ currentPage, onNavigate, open, onClose }: Side
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-50 h-full w-64 border-r border-white/5 bg-black/95 backdrop-blur-xl transition-transform duration-300 md:static md:translate-x-0",
+          "fixed left-0 top-0 z-50 h-full border-r border-white/5 bg-black/95 backdrop-blur-xl transition-all duration-300 md:static md:translate-x-0",
+          collapsed ? "w-16" : "w-64",
           open ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -62,7 +76,7 @@ export default function Sidebar({ currentPage, onNavigate, open, onClose }: Side
         <div className="hidden h-16 md:block" />
 
         {/* Navigation */}
-        <nav className="space-y-1 p-3">
+        <nav className={cn("space-y-1", collapsed ? "p-2" : "p-3")}>
           {navItems.map((item) => {
             const Icon = item.icon
             const isActive = currentPage === item.id
@@ -74,21 +88,43 @@ export default function Sidebar({ currentPage, onNavigate, open, onClose }: Side
                   onNavigate(item.id)
                   onClose?.()
                 }}
+                title={collapsed ? item.label : undefined}
                 className={cn(
-                  "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all",
+                  "flex w-full items-center rounded-lg text-sm font-medium transition-all",
+                  collapsed 
+                    ? "justify-center p-3" 
+                    : "gap-3 px-3 py-2.5",
                   isActive
                     ? "bg-white/10 text-white"
                     : "text-white/50 hover:bg-white/5 hover:text-white/80"
                 )}
               >
-                <Icon className={cn("h-5 w-5", isActive ? "text-white" : "text-white/40")} />
-                {item.label}
+                <Icon className={cn("h-5 w-5 shrink-0", isActive ? "text-white" : "text-white/40")} />
+                {!collapsed && <span>{item.label}</span>}
               </button>
             )
           })}
         </nav>
 
-        </aside>
+        {/* Collapse toggle (desktop only) */}
+        {onToggleCollapse && (
+          <div className="hidden md:block absolute bottom-4 left-0 right-0 px-2">
+            <button
+              onClick={onToggleCollapse}
+              className={cn(
+                "flex w-full items-center rounded-lg p-2.5 text-white/40 hover:bg-white/5 hover:text-white/60 transition-all",
+                collapsed ? "justify-center" : "justify-end"
+              )}
+            >
+              {collapsed ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+        )}
+      </aside>
     </>
   )
 }

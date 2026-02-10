@@ -8,6 +8,7 @@ import LoginForm from "@/components/LoginForm"
 import TwoFactorVerify from "@/components/TwoFactorVerify"
 import Settings from "@/components/Settings"
 import Dashboard from "@/components/Dashboard"
+import AgentsPage from "@/components/AgentsPage"
 import AppShell from "@/components/AppShell"
 import { Loader2 } from "lucide-react"
 
@@ -138,6 +139,8 @@ export default function Home() {
     switch (currentPage) {
       case "dashboard":
         return <Dashboard />
+      case "agents":
+        return <AgentsPage />
       case "settings":
         return <Settings user={user} onUpdate={refreshUser} embedded />
       case "users":
