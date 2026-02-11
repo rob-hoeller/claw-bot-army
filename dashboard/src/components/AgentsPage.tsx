@@ -1011,6 +1011,59 @@ All PRs require:
 ---
 
 *Full constitution: /global-knowledge/CODE-FACTORY.md*` },
+  { name: "COORDINATION", content: `# HBx + Humans Coordination Protocol
+
+## Purpose
+
+Prevent conflicts when HBx agents and human developers work on the same codebase.
+
+---
+
+## Before Starting Any Feature
+
+1. **Sync:** \`git fetch origin && git pull origin main\`
+2. **Check:** Review open PRs for file conflicts
+3. **Branch:** \`git checkout -b hbx/[feature-name]\`
+4. **Announce:** Post in Telegram what you're working on
+
+---
+
+## File Ownership Signals
+
+| Indicator | Action |
+|-----------|--------|
+| Open PR touching file | ⚠️ Don't touch same files |
+| Someone announced work | ⚠️ Coordinate first |
+| No signals | ✅ Safe to proceed |
+
+---
+
+## Communication Templates
+
+**Starting:**
+\`🔧 Starting: [Feature] — Files: [list]\`
+
+**PR Ready:**
+\`📬 PR Ready: [Title] — [link]\`
+
+**Merged:**
+\`✅ Merged: [Feature] — Main updated\`
+
+---
+
+## Ownership Guidelines
+
+| Area | Owner |
+|------|-------|
+| Auth / Supabase | Rob H |
+| UI Components | HBx |
+| Dashboard Pages | HBx |
+| Database Schema | Rob H |
+| Agent Configs | HBx |
+
+---
+
+*Full protocol: /global-knowledge/COORDINATION.md*` },
 ]
 
 // Static agent data (will be dynamic from API later)
