@@ -15,7 +15,7 @@ import {
   Plus,
   Rocket,
   Globe,
-  FolderTemplate,
+  FolderOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -1469,7 +1469,7 @@ export default function AgentsPage() {
         </CollapsibleSection>
 
         {/* Agent Templates */}
-        <CollapsibleSection title="Agent Template" icon={FolderTemplate}>
+        <CollapsibleSection title="Agent Template" icon={FolderOpen}>
           <div className="space-y-1">
             {templateFiles.map((file) => (
               <FileListItem
@@ -1544,7 +1544,7 @@ export default function AgentsPage() {
             <FilePanel
               title="Agent Template"
               subtitle="Default files for new agents"
-              icon={FolderTemplate}
+              icon={FolderOpen}
               files={templateFiles}
               onClose={() => setShowTemplates(false)}
             />
