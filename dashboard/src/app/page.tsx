@@ -10,6 +10,7 @@ import Settings from "@/components/Settings"
 import Dashboard from "@/components/Dashboard"
 import AgentsPage from "@/components/AgentsPage"
 import AppShell from "@/components/AppShell"
+import { FeatureBoard } from "@/components/features"
 import { Loader2 } from "lucide-react"
 
 // Placeholder pages for navigation
@@ -141,6 +142,10 @@ export default function Home() {
         return <Dashboard />
       case "agents":
         return <AgentsPage />
+      case "features":
+        return <FeatureBoard />
+      case "bugs":
+        return <PlaceholderPage title="Bugs" />
       case "settings":
         return <Settings user={user} onUpdate={refreshUser} embedded />
       case "users":
