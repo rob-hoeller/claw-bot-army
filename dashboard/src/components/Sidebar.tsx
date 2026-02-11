@@ -72,8 +72,21 @@ export default function Sidebar({
           </Button>
         </div>
 
-        {/* Desktop spacer */}
-        <div className="hidden h-16 md:block" />
+        {/* Desktop spacer with collapse toggle */}
+        <div className="hidden h-16 md:flex items-center justify-end px-3">
+          {onToggleCollapse && (
+            <button
+              onClick={onToggleCollapse}
+              className="p-1.5 rounded-lg text-white/40 hover:bg-white/5 hover:text-white/60 transition-all"
+            >
+              {collapsed ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" />
+              )}
+            </button>
+          )}
+        </div>
 
         {/* Navigation */}
         <nav className={cn("space-y-1", collapsed ? "p-2" : "p-3")}>
@@ -106,24 +119,6 @@ export default function Sidebar({
           })}
         </nav>
 
-        {/* Collapse toggle (desktop only) */}
-        {onToggleCollapse && (
-          <div className="hidden md:block absolute bottom-4 left-0 right-0 px-2">
-            <button
-              onClick={onToggleCollapse}
-              className={cn(
-                "flex w-full items-center rounded-lg p-2.5 text-white/40 hover:bg-white/5 hover:text-white/60 transition-all",
-                collapsed ? "justify-center" : "justify-end"
-              )}
-            >
-              {collapsed ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
-              )}
-            </button>
-          </div>
-        )}
       </aside>
     </>
   )
