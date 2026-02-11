@@ -24,6 +24,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { ChatPanel } from "@/components/chat"
+import { ActivityFeed, ActivityItemData } from "@/components/activity"
+import { AgentStatusBadge, useAgentStatus } from "@/components/agents"
 
 // Agent data structure
 interface AgentFile {
@@ -1147,6 +1149,19 @@ function AgentCard({
   isSelected: boolean
   isRoot?: boolean
 }) {
+  const gatewayStatus = useAgentStatus(agent.id.toLowerCase())
+  
+  // Get agent emoji based on ID
+  const getAgentEmoji = (id: string) => {
+    const emojiMap: Record<string, string> = {
+      'HBx': '🧠',
+      'HBx_SL1': '🏠',
+      'HBx_SL2': '🔍',
+      'HBx_SK1': '🛠️',
+    }
+    return emojiMap[id] || '🤖'
+  }
+
   return (
     <motion.button
       whileHover={{ scale: 1.02 }}
@@ -1160,6 +1175,11 @@ function AgentCard({
         isRoot ? "min-w-[200px]" : "min-w-[160px]"
       )}
     >
+      {/* Gateway Status Badge - Top Right */}
+      <div className="absolute top-2 right-2">
+        <AgentStatusBadge status={gatewayStatus} size="sm" />
+      </div>
+      
       <div
         className={cn(
           "flex items-center justify-center rounded-xl mb-3",
@@ -1167,7 +1187,7 @@ function AgentCard({
           "bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/20"
         )}
       >
-        <Bot className={cn("text-blue-400", isRoot ? "h-7 w-7" : "h-6 w-6")} />
+        <span className={cn(isRoot ? "text-2xl" : "text-xl")}>{getAgentEmoji(agent.id)}</span>
       </div>
       <p className={cn("font-semibold text-white", isRoot ? "text-lg" : "text-sm")}>
         {agent.id}
@@ -1460,21 +1480,36 @@ function FilePanel({
 
 // User channel data (will come from Supabase later)
 const chatUsers = [
-  { id: 'lance', name: 'Lance Manlove', initials: 'LM', color: 'purple' },
-  { id: 'robl', name: 'Rob L', initials: 'RL', color: 'blue' },
-  { id: 'robh', name: 'Rob H', initials: 'RH', color: 'green' },
+  { id: 'lance', name: 'Lance Manlove', initials: 'LM', color: 'purple', email: 'lance@' },
+  { id: 'robl', name: 'Rob L', initials: 'RL', color: 'blue', email: 'robl@' },
+  { id: 'robh', name: 'Rob H', initials: 'RH', color: 'green', email: 'robh@' },
 ]
+
+// Detect current user from various sources
+function useCurrentUser() {
+  // TODO: Get from Supabase auth session
+  // For now, check localStorage or default to first user
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('hbx-current-user')
+    if (stored && chatUsers.find(u => u.id === stored)) {
+      return stored
+    }
+  }
+  return chatUsers[0].id // Default to Lance
+}
 
 // Agent Detail Panel - Full Page Modal with Chat, Files, Status, etc.
 function AgentDetailPanel({
   agent,
   onClose,
+  defaultUserId,
 }: {
   agent: Agent
   onClose: () => void
+  defaultUserId?: string
 }) {
   const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'status' | 'cron' | 'memory'>('chat')
-  const [activeUser, setActiveUser] = useState(chatUsers[0].id) // Default to first user (logged in user)
+  const [activeUser, setActiveUser] = useState(defaultUserId || chatUsers[0].id) // Default to logged in user
   const [activeFile, setActiveFile] = useState(agent.files.filter(f => f.name !== 'MEMORY')[0]?.name || "")
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState("")
@@ -1750,9 +1785,33 @@ export default function AgentsPage() {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showGlobalKnowledge, setShowGlobalKnowledge] = useState(false)
+  const [showActivityFeed, setShowActivityFeed] = useState(true)
+  const currentUserId = useCurrentUser()
+
+  // Handle clicking on an activity item
+  const handleActivityClick = (item: ActivityItemData) => {
+    // Find the agent by ID
+    const findAgent = (tree: Agent, id: string): Agent | null => {
+      if (tree.id.toLowerCase() === id.toLowerCase()) return tree
+      if (tree.children) {
+        for (const child of tree.children) {
+          const found = findAgent(child, id)
+          if (found) return found
+        }
+      }
+      return null
+    }
+    
+    const agent = findAgent(agentTree, item.agentId)
+    if (agent) {
+      setSelectedAgent(agent)
+    }
+  }
 
   return (
-    <div className="pt-8 pb-8 space-y-8">
+    <div className="flex h-[calc(100vh-4rem)]">
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto pt-8 pb-8 space-y-8">
       {/* Org Chart */}
       <div className="relative">
         {/* Global Knowledge Base Card - Top of hierarchy */}
@@ -1840,6 +1899,7 @@ export default function AgentsPage() {
             <AgentDetailPanel
               agent={selectedAgent}
               onClose={() => setSelectedAgent(null)}
+              defaultUserId={currentUserId}
             />
           </>
         )}
@@ -1877,6 +1937,31 @@ export default function AgentsPage() {
         )}
 
       </AnimatePresence>
+      </div>
+
+      {/* Activity Feed Side Panel */}
+      {showActivityFeed && (
+        <div className="w-80 flex-shrink-0 relative">
+          <ActivityFeed 
+            onItemClick={handleActivityClick}
+            className="h-full"
+          />
+        </div>
+      )}
+
+      {/* Toggle Activity Feed Button */}
+      <button
+        onClick={() => setShowActivityFeed(!showActivityFeed)}
+        className={cn(
+          "fixed bottom-4 right-4 z-30 p-3 rounded-full transition-all shadow-lg",
+          showActivityFeed 
+            ? "bg-purple-500/20 text-purple-300 hover:bg-purple-500/30"
+            : "bg-white/10 text-white/60 hover:bg-white/20"
+        )}
+        title={showActivityFeed ? "Hide activity feed" : "Show activity feed"}
+      >
+        <Activity className="h-5 w-5" />
+      </button>
     </div>
   )
 }
