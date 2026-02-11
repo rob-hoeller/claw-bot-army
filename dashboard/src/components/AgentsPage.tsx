@@ -1132,10 +1132,78 @@ const agentTree: Agent = {
           .replace(/\[DATE\]/g, "2026-02-10")
       })),
     },
+    {
+      id: "HBx_IN1",
+      name: "Product Architect",
+      role: "Feature Planning & Specification",
+      dept: "Innovation",
+      status: "active",
+      files: templateFiles.map(f => ({
+        ...f,
+        content: f.content
+          .replace(/\[Agent Name\]/g, "Product Architect")
+          .replace(/\[Agent ID\]/g, "HBx_IN1")
+          .replace(/\[Emoji\]/g, "📐")
+          .replace(/\[Department\]/g, "Innovation")
+          .replace(/\[Role Description\]/g, "Feature Planning & Specification")
+          .replace(/\[DATE\]/g, "2026-02-11")
+      })),
+    },
+    {
+      id: "HBx_IN2",
+      name: "Code Factory",
+      role: "Feature Implementation & PRs",
+      dept: "Innovation",
+      status: "active",
+      files: templateFiles.map(f => ({
+        ...f,
+        content: f.content
+          .replace(/\[Agent Name\]/g, "Code Factory")
+          .replace(/\[Agent ID\]/g, "HBx_IN2")
+          .replace(/\[Emoji\]/g, "🏭")
+          .replace(/\[Department\]/g, "Innovation")
+          .replace(/\[Role Description\]/g, "Feature Implementation & PRs")
+          .replace(/\[DATE\]/g, "2026-02-11")
+      })),
+    },
+    {
+      id: "HBx_IN3",
+      name: "Research Lab",
+      role: "R&D & Continuous Learning",
+      dept: "Innovation",
+      status: "active",
+      files: templateFiles.map(f => ({
+        ...f,
+        content: f.content
+          .replace(/\[Agent Name\]/g, "Research Lab")
+          .replace(/\[Agent ID\]/g, "HBx_IN3")
+          .replace(/\[Emoji\]/g, "🔬")
+          .replace(/\[Department\]/g, "Innovation")
+          .replace(/\[Role Description\]/g, "R&D & Continuous Learning")
+          .replace(/\[DATE\]/g, "2026-02-11")
+      })),
+    },
+    {
+      id: "HBx_SP1",
+      name: "Support",
+      role: "Bug Triage & Platform Maintenance",
+      dept: "Support",
+      status: "active",
+      files: templateFiles.map(f => ({
+        ...f,
+        content: f.content
+          .replace(/\[Agent Name\]/g, "Support")
+          .replace(/\[Agent ID\]/g, "HBx_SP1")
+          .replace(/\[Emoji\]/g, "🛟")
+          .replace(/\[Department\]/g, "Support")
+          .replace(/\[Role Description\]/g, "Bug Triage & Platform Maintenance")
+          .replace(/\[DATE\]/g, "2026-02-11")
+      })),
+    },
   ],
 }
 
-const departments = ["Platform", "Sales", "Warranty", "Construction", "Start Up", "Settlement", "Design", "QA"]
+const departments = ["Platform", "Sales", "Innovation", "Support", "Warranty", "Construction", "Start Up", "Settlement", "Design", "QA"]
 
 // Agent Card Component
 function AgentCard({
@@ -1158,6 +1226,10 @@ function AgentCard({
       'HBx_SL1': '🏠',
       'HBx_SL2': '🔍',
       'HBx_SK1': '🛠️',
+      'HBx_IN1': '📐',
+      'HBx_IN2': '🏭',
+      'HBx_IN3': '🔬',
+      'HBx_SP1': '🛟',
     }
     return emojiMap[id] || '🤖'
   }
@@ -1541,6 +1613,10 @@ function AgentDetailPanel({
       'HBx_SL1': '🏠',
       'HBx_SL2': '🔍',
       'HBx_SK1': '🛠️',
+      'HBx_IN1': '📐',
+      'HBx_IN2': '🏭',
+      'HBx_IN3': '🔬',
+      'HBx_SP1': '🛟',
     }
     return emojiMap[id] || '🤖'
   }
