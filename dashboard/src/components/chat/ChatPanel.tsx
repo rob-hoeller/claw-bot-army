@@ -67,6 +67,8 @@ export function ChatPanel({
       }
 
       // Real mode - use Supabase
+      if (!supabase) return // TypeScript guard
+      
       try {
         setIsLoading(true)
         setError(null)
