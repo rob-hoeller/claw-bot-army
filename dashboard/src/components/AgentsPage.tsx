@@ -15,11 +15,15 @@ import {
   Plus,
   Rocket,
   Globe,
+  MessageSquare,
+  Activity,
+  Brain,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { ChatPanel } from "@/components/chat"
 
 // Agent data structure
 interface AgentFile {
@@ -1454,7 +1458,14 @@ function FilePanel({
   )
 }
 
-// Agent Detail Panel - now uses FilePanel
+// User channel data (will come from Supabase later)
+const chatUsers = [
+  { id: 'lance', name: 'Lance Manlove', initials: 'LM', color: 'purple' },
+  { id: 'robl', name: 'Rob L', initials: 'RL', color: 'blue' },
+  { id: 'robh', name: 'Rob H', initials: 'RH', color: 'green' },
+]
+
+// Agent Detail Panel - Full Page Modal with Chat, Files, Status, etc.
 function AgentDetailPanel({
   agent,
   onClose,
@@ -1462,14 +1473,275 @@ function AgentDetailPanel({
   agent: Agent
   onClose: () => void
 }) {
+  const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'status' | 'cron' | 'memory'>('chat')
+  const [activeUser, setActiveUser] = useState(chatUsers[0].id) // Default to first user (logged in user)
+  const [activeFile, setActiveFile] = useState(agent.files.filter(f => f.name !== 'MEMORY')[0]?.name || "")
+  const [isEditing, setIsEditing] = useState(false)
+  const [editContent, setEditContent] = useState("")
+
+  // Filter out MEMORY from files (it has its own tab)
+  const editableFiles = agent.files.filter(f => f.name !== 'MEMORY')
+  const currentFile = editableFiles.find((f) => f.name === activeFile)
+
+  const handleEdit = () => {
+    if (currentFile) {
+      setEditContent(currentFile.content)
+      setIsEditing(true)
+    }
+  }
+
+  const handleSave = () => {
+    // TODO: Save to backend/filesystem via Option B
+    setIsEditing(false)
+  }
+
+  // Get agent emoji based on ID
+  const getAgentEmoji = (id: string) => {
+    const emojiMap: Record<string, string> = {
+      'HBx': '🧠',
+      'HBx_SL1': '🏠',
+      'HBx_SL2': '🔍',
+      'HBx_SK1': '🛠️',
+    }
+    return emojiMap[id] || '🤖'
+  }
+
+  const tabs = [
+    { id: 'chat' as const, label: 'Chat', icon: MessageSquare },
+    { id: 'files' as const, label: 'Files', icon: FileText },
+    { id: 'status' as const, label: 'Status', icon: Activity },
+    { id: 'cron' as const, label: 'Cron', icon: Clock },
+    { id: 'memory' as const, label: 'Memory', icon: Brain },
+  ]
+
   return (
-    <FilePanel
-      title={agent.id}
-      subtitle={agent.role}
-      icon={Bot}
-      files={agent.files}
-      onClose={onClose}
-    />
+    <motion.div
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      className="fixed inset-4 md:inset-8 lg:inset-12 bg-black/98 border border-white/10 rounded-2xl backdrop-blur-xl z-50 flex flex-col overflow-hidden"
+    >
+      {/* Header */}
+      <div className="flex-shrink-0 flex items-center justify-between border-b border-white/10 px-6 py-4">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/20">
+            <span className="text-xl">{getAgentEmoji(agent.id)}</span>
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-white">{agent.id}</h2>
+              <Badge variant={agent.status === "active" ? "success" : "warning"}>
+                {agent.status}
+              </Badge>
+            </div>
+            <p className="text-sm text-white/50">{agent.role}</p>
+          </div>
+        </div>
+        <Button variant="ghost" size="icon" onClick={onClose}>
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex-shrink-0 px-6 pt-4 border-b border-white/5">
+        <div className="flex gap-1">
+          {tabs.map((tab) => {
+            const Icon = tab.icon
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-all",
+                  activeTab === tab.id
+                    ? "bg-purple-500/20 text-purple-300"
+                    : "text-white/50 hover:text-white/70 hover:bg-white/5"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {/* Chat Tab */}
+        {activeTab === 'chat' && (
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* User Channel Selector */}
+            <div className="flex-shrink-0 px-6 py-3 border-b border-white/5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/40 mr-2">Channels:</span>
+                {chatUsers.map((user) => (
+                  <button
+                    key={user.id}
+                    onClick={() => setActiveUser(user.id)}
+                    title={user.name}
+                    className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all",
+                      activeUser === user.id
+                        ? user.color === 'purple' 
+                          ? "bg-purple-500 text-white ring-2 ring-purple-400 ring-offset-2 ring-offset-black"
+                          : user.color === 'blue'
+                            ? "bg-blue-500 text-white ring-2 ring-blue-400 ring-offset-2 ring-offset-black"
+                            : "bg-green-500 text-white ring-2 ring-green-400 ring-offset-2 ring-offset-black"
+                        : "bg-white/10 text-white/60 hover:bg-white/20"
+                    )}
+                  >
+                    {user.initials}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Chat Panel */}
+            <div className="flex-1 min-h-0 h-full">
+              <ChatPanel
+                agentId={agent.id}
+                agentName={agent.name || agent.id}
+                agentEmoji={getAgentEmoji(agent.id)}
+                userId={activeUser}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Files Tab */}
+        {activeTab === 'files' && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* File Tabs (excludes MEMORY - it has its own tab) */}
+            <div className="flex-shrink-0 px-6 pt-4 border-b border-white/5">
+              <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10 pb-2">
+                <div className="flex gap-1 min-w-max">
+                  {editableFiles.map((file) => (
+                    <button
+                      key={file.name}
+                      onClick={() => {
+                        setActiveFile(file.name)
+                        setIsEditing(false)
+                      }}
+                      className={cn(
+                        "flex items-center px-3 py-1.5 text-xs rounded-lg transition-all whitespace-nowrap",
+                        activeFile === file.name
+                          ? "bg-purple-500/20 text-purple-300"
+                          : "text-white/50 hover:text-white/70 hover:bg-white/5"
+                      )}
+                    >
+                      <FileText className="h-3 w-3 mr-1.5" />
+                      {file.name}.md
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* File Toolbar */}
+            <div className="flex-shrink-0 flex items-center justify-between px-6 py-2 border-b border-white/5">
+              <span className="text-xs text-white/40">{activeFile}.md</span>
+              {isEditing ? (
+                <Button size="sm" onClick={handleSave} className="h-7 text-xs">
+                  <Save className="h-3 w-3 mr-1" />
+                  Save
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleEdit}
+                  className="h-7 text-xs text-white/60 hover:text-white"
+                >
+                  <Pencil className="h-3 w-3 mr-1" />
+                  Edit
+                </Button>
+              )}
+            </div>
+
+            {/* File Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {isEditing ? (
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="w-full h-full min-h-[400px] bg-white/5 border border-white/10 rounded-lg p-4 text-sm text-white/80 font-mono resize-none focus:outline-none focus:border-purple-500/50"
+                />
+              ) : (
+                <pre className="whitespace-pre-wrap text-sm text-white/70 font-mono leading-relaxed">
+                  {currentFile?.content || "No content"}
+                </pre>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Status Tab */}
+        {activeTab === 'status' && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                <h4 className="text-sm font-medium text-white mb-3">Agent Status</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-xs text-white/40">Status</p>
+                    <p className="text-sm text-green-400">● Active</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/40">Department</p>
+                    <p className="text-sm text-white">{agent.dept}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/40">Last Active</p>
+                    <p className="text-sm text-white">Just now</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-white/40">Sessions Today</p>
+                    <p className="text-sm text-white">—</p>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                <h4 className="text-sm font-medium text-white mb-3">Performance</h4>
+                <p className="text-xs text-white/40">Stats will appear once connected to gateway.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cron Tab */}
+        {activeTab === 'cron' && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
+              <h4 className="text-sm font-medium text-white mb-3">Scheduled Tasks</h4>
+              <p className="text-xs text-white/40">No scheduled tasks configured.</p>
+              <Button variant="outline" size="sm" className="mt-3">
+                <Plus className="h-3 w-3 mr-1" />
+                Add Task
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Memory Tab */}
+        {activeTab === 'memory' && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                <h4 className="text-sm font-medium text-white mb-3">MEMORY.md</h4>
+                <pre className="text-xs text-white/60 font-mono whitespace-pre-wrap">
+                  {agent.files.find(f => f.name === 'MEMORY')?.content || 'No memory file found.'}
+                </pre>
+              </div>
+              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                <h4 className="text-sm font-medium text-white mb-3">Daily Logs</h4>
+                <p className="text-xs text-white/40">Memory logs will appear once connected.</p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </motion.div>
   )
 }
 
