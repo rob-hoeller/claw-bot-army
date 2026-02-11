@@ -15,7 +15,6 @@ import {
   Plus,
   Rocket,
   Globe,
-  FolderOpen,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -1421,85 +1420,43 @@ function AgentDetailPanel({
   )
 }
 
-// Collapsible Section Component
-function CollapsibleSection({
-  title,
-  icon: Icon,
-  children,
-  defaultOpen = false,
-}: {
-  title: string
-  icon: React.ElementType
-  children: React.ReactNode
-  defaultOpen?: boolean
-}) {
-  const [isOpen, setIsOpen] = useState(defaultOpen)
-
-  return (
-    <div className="border border-white/10 rounded-xl bg-white/[0.02]">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-4 text-left hover:bg-white/[0.02] transition-colors rounded-xl"
-      >
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20">
-            <Icon className="h-4 w-4 text-purple-400" />
-          </div>
-          <span className="font-medium text-white">{title}</span>
-        </div>
-        <ChevronRight
-          className={cn(
-            "h-4 w-4 text-white/40 transition-transform",
-            isOpen && "rotate-90"
-          )}
-        />
-      </button>
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="px-4 pb-4">{children}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
-// File List Item
-function FileListItem({
-  name,
-  onClick,
-}: {
-  name: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex items-center gap-2 px-3 py-2 w-full text-left rounded-lg hover:bg-white/5 transition-colors group"
-    >
-      <FileText className="h-4 w-4 text-white/40 group-hover:text-purple-400" />
-      <span className="text-sm text-white/70 group-hover:text-white">{name}.md</span>
-    </button>
-  )
-}
-
 // Main Agents Page
 export default function AgentsPage() {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showGlobalKnowledge, setShowGlobalKnowledge] = useState(false)
-  const [showTemplates, setShowTemplates] = useState(false)
 
   return (
     <div className="pt-8 pb-8 space-y-8">
       {/* Org Chart */}
       <div className="relative">
+        {/* Global Knowledge Base Card - Top of hierarchy */}
+        <div className="flex flex-col items-center">
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => setShowGlobalKnowledge(true)}
+            className={cn(
+              "relative flex flex-col items-center p-4 rounded-xl border transition-all text-left min-w-[160px]",
+              showGlobalKnowledge
+                ? "border-purple-500/50 bg-purple-500/10 shadow-[0_0_20px_-5px_rgba(147,51,234,0.3)]"
+                : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]"
+            )}
+          >
+            <div className="flex items-center justify-center w-12 h-12 rounded-xl mb-3 bg-gradient-to-br from-green-500/20 to-emerald-500/20 border border-green-500/20">
+              <Globe className="h-6 w-6 text-green-400" />
+            </div>
+            <p className="text-sm font-semibold text-white">Global Knowledge</p>
+            <p className="text-xs text-white/50 mt-0.5 text-center">Shared context</p>
+          </motion.button>
+
+          {/* Connector to HBx */}
+          <div className="flex flex-col items-center">
+            <div className="w-px h-6 bg-white/10" />
+            <ChevronDown className="h-4 w-4 text-white/20 -mt-1" />
+          </div>
+        </div>
+
         {/* Root Agent (HBx) */}
         <div className="flex flex-col items-center">
           <AgentCard
@@ -1542,35 +1499,6 @@ export default function AgentsPage() {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Knowledge & Templates Sections */}
-      <div className="max-w-2xl mx-auto space-y-4 px-4">
-        {/* Global Knowledge Base */}
-        <CollapsibleSection title="Global Knowledge Base" icon={Globe}>
-          <div className="space-y-1">
-            {globalKnowledgeFiles.map((file) => (
-              <FileListItem
-                key={file.name}
-                name={file.name}
-                onClick={() => setShowGlobalKnowledge(true)}
-              />
-            ))}
-          </div>
-        </CollapsibleSection>
-
-        {/* Agent Templates */}
-        <CollapsibleSection title="Agent Template" icon={FolderOpen}>
-          <div className="space-y-1">
-            {templateFiles.map((file) => (
-              <FileListItem
-                key={file.name}
-                name={file.name}
-                onClick={() => setShowTemplates(true)}
-              />
-            ))}
-          </div>
-        </CollapsibleSection>
       </div>
 
       {/* Panels */}
@@ -1623,24 +1551,6 @@ export default function AgentsPage() {
           </>
         )}
 
-        {showTemplates && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
-              onClick={() => setShowTemplates(false)}
-            />
-            <FilePanel
-              title="Agent Template"
-              subtitle="Default files for new agents"
-              icon={FolderOpen}
-              files={templateFiles}
-              onClose={() => setShowTemplates(false)}
-            />
-          </>
-        )}
       </AnimatePresence>
     </div>
   )
