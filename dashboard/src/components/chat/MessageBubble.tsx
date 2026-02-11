@@ -10,6 +10,7 @@ interface MessageBubbleProps {
   message: Message
   agentName?: string
   agentEmoji?: string
+  isStreaming?: boolean
 }
 
 // Image Lightbox Component
@@ -105,7 +106,7 @@ function AttachmentPreview({
   )
 }
 
-export function MessageBubble({ message, agentName = "Agent", agentEmoji }: MessageBubbleProps) {
+export function MessageBubble({ message, agentName = "Agent", agentEmoji, isStreaming = false }: MessageBubbleProps) {
   const [lightboxImage, setLightboxImage] = useState<{ url: string; name: string } | null>(null)
   
   const isUser = message.role === 'user'
@@ -175,6 +176,9 @@ export function MessageBubble({ message, agentName = "Agent", agentEmoji }: Mess
             {message.content && (
               <p className="text-sm whitespace-pre-wrap leading-relaxed">
                 {message.content}
+                {isStreaming && (
+                  <span className="inline-block w-2 h-4 ml-0.5 bg-white/70 animate-pulse" />
+                )}
               </p>
             )}
 

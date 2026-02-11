@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { motion } from "framer-motion"
-import { Bot, Loader2 } from "lucide-react"
+import { Bot, Loader2, Wifi, WifiOff } from "lucide-react"
 import { MessageBubble } from "./MessageBubble"
 import { ChatInput } from "./ChatInput"
 import { Message, Attachment, Conversation } from "./types"
@@ -25,17 +25,21 @@ export function ChatPanel({
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingContent, setStreamingContent] = useState("")
   const [error, setError] = useState<string | null>(null)
+  const [gatewayConnected, setGatewayConnected] = useState<boolean | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   // Scroll to bottom when messages change
-  const scrollToBottom = () => {
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
+  }, [])
 
   useEffect(() => {
     scrollToBottom()
-  }, [messages])
+  }, [messages, streamingContent, scrollToBottom])
 
   // Check if userId is a valid UUID (real Supabase user) vs placeholder
   const isValidUUID = (id: string) => {
@@ -46,6 +50,19 @@ export function ChatPanel({
   // Demo mode: no Supabase, no userId, or placeholder userId
   const isDemoMode = !supabase || !userId || !isValidUUID(userId)
 
+  // Check gateway connection on mount
+  useEffect(() => {
+    async function checkGateway() {
+      try {
+        const response = await fetch('/api/chat/sessions?limit=1')
+        setGatewayConnected(response.ok)
+      } catch {
+        setGatewayConnected(false)
+      }
+    }
+    checkGateway()
+  }, [])
+
   // Load or create conversation
   useEffect(() => {
     async function initConversation() {
@@ -53,12 +70,15 @@ export function ChatPanel({
       if (isDemoMode) {
         setIsLoading(false)
         setError(null)
+        const welcomeNote = gatewayConnected 
+          ? "" 
+          : "\n\n_(Gateway not connected — responses will be simulated)_"
         setMessages([
           {
             id: '1',
             conversation_id: 'demo',
             role: 'assistant',
-            content: `Hello! I'm ${agentName}. How can I help you today?\n\n_(Demo mode — connect Supabase for persistence)_`,
+            content: `Hello! I'm ${agentName}. How can I help you today?${welcomeNote}`,
             attachments: [],
             created_at: new Date().toISOString()
           }
@@ -67,7 +87,6 @@ export function ChatPanel({
       }
 
       // Real mode - use Supabase
-      // TypeScript guard - supabase is guaranteed non-null here since isDemoMode checks it
       const sb = supabase!
       
       try {
@@ -138,7 +157,96 @@ export function ChatPanel({
     }
 
     initConversation()
-  }, [agentId, agentName, userId, isDemoMode])
+  }, [agentId, agentName, userId, isDemoMode, gatewayConnected])
+
+  // Parse SSE stream from OpenClaw gateway
+  const parseSSEStream = async (
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    onChunk: (content: string) => void,
+    onDone: (fullContent: string) => void
+  ) => {
+    const decoder = new TextDecoder()
+    let buffer = ""
+    let fullContent = ""
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ""
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              onDone(fullContent)
+              return
+            }
+            try {
+              const parsed = JSON.parse(data)
+              const content = parsed.choices?.[0]?.delta?.content || ""
+              if (content) {
+                fullContent += content
+                onChunk(fullContent)
+              }
+            } catch {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+      onDone(fullContent)
+    } catch (err) {
+      console.error('SSE parsing error:', err)
+      onDone(fullContent)
+    }
+  }
+
+  // Send message to OpenClaw gateway
+  const sendToGateway = async (content: string): Promise<string> => {
+    abortControllerRef.current = new AbortController()
+
+    const response = await fetch('/api/chat/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: content,
+        agentId,
+        sessionKey: conversation?.id || `dashboard-${agentId}-${userId || 'anon'}`,
+        stream: true,
+      }),
+      signal: abortControllerRef.current.signal,
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || `Gateway error: ${response.status}`)
+    }
+
+    if (!response.body) {
+      throw new Error('No response body')
+    }
+
+    setIsStreaming(true)
+    setStreamingContent("")
+
+    const reader = response.body.getReader()
+    
+    return new Promise((resolve, reject) => {
+      parseSSEStream(
+        reader,
+        (partialContent) => setStreamingContent(partialContent),
+        (fullContent) => {
+          setIsStreaming(false)
+          setStreamingContent("")
+          resolve(fullContent || "I received your message but couldn't generate a response.")
+        }
+      ).catch(reject)
+    })
+  }
 
   // Handle sending a message
   const handleSend = async (content: string, attachments: Attachment[]) => {
@@ -146,7 +254,7 @@ export function ChatPanel({
 
     const userMessage: Message = {
       id: `temp-${Date.now()}`,
-      conversation_id: conversation?.id || 'mock',
+      conversation_id: conversation?.id || 'demo',
       role: 'user',
       content,
       attachments,
@@ -156,13 +264,12 @@ export function ChatPanel({
     // Optimistically add user message
     setMessages(prev => [...prev, userMessage])
     setIsSending(true)
+    setError(null)
 
     try {
+      // Save user message to Supabase (if connected)
       if (!isDemoMode && supabase && conversation) {
-        // TypeScript guard - supabase is guaranteed non-null in this branch
         const sb = supabase!
-        
-        // Save user message to Supabase
         const { data: savedMsg, error: saveError } = await sb
           .from('messages')
           .insert({
@@ -175,60 +282,63 @@ export function ChatPanel({
           .single()
 
         if (saveError) throw saveError
+        setMessages(prev => prev.map(m => m.id === userMessage.id ? savedMsg : m))
+      }
 
-        // Update with real ID
-        setMessages(prev => 
-          prev.map(m => m.id === userMessage.id ? savedMsg : m)
-        )
+      // Try to send to gateway
+      let responseContent: string
 
-        // TODO: Send to OpenClaw gateway and get response
-        // For now, simulate a response
-        await new Promise(resolve => setTimeout(resolve, 1000))
-
-        const assistantMessage: Message = {
-          id: `temp-response-${Date.now()}`,
-          conversation_id: conversation.id,
-          role: 'assistant',
-          content: `I received your message: "${content}"\n\nThis is a placeholder response. Once connected to the OpenClaw gateway, I'll provide real assistance.`,
-          attachments: [],
-          created_at: new Date().toISOString()
+      if (gatewayConnected) {
+        try {
+          responseContent = await sendToGateway(content)
+        } catch (err) {
+          console.error('Gateway error, falling back to mock:', err)
+          // Fallback to mock if gateway fails
+          responseContent = `I received your message: "${content}"\n\n_(Gateway connection failed — this is a simulated response)_`
         }
+      } else {
+        // Mock response when gateway not connected
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        responseContent = `I received your message: "${content}"\n\n_(Gateway not connected — configure OPENCLAW_GATEWAY_URL and OPENCLAW_GATEWAY_TOKEN for real responses)_`
+      }
 
-        // Save assistant message
+      const assistantMessage: Message = {
+        id: `response-${Date.now()}`,
+        conversation_id: conversation?.id || 'demo',
+        role: 'assistant',
+        content: responseContent,
+        attachments: [],
+        created_at: new Date().toISOString()
+      }
+
+      // Save assistant message to Supabase (if connected)
+      if (!isDemoMode && supabase && conversation) {
+        const sb = supabase!
         const { data: savedResponse, error: responseError } = await sb
           .from('messages')
           .insert({
             conversation_id: conversation.id,
             role: 'assistant',
-            content: assistantMessage.content,
+            content: responseContent,
             attachments: []
           })
           .select()
           .single()
 
         if (responseError) throw responseError
-
         setMessages(prev => [...prev, savedResponse])
       } else {
-        // Mock mode
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        
-        const mockResponse: Message = {
-          id: `mock-${Date.now()}`,
-          conversation_id: 'mock',
-          role: 'assistant',
-          content: `I received your message: "${content}"\n\nThis is a placeholder response. Connect to Supabase for persistence.`,
-          attachments: [],
-          created_at: new Date().toISOString()
-        }
-        
-        setMessages(prev => [...prev, mockResponse])
+        setMessages(prev => [...prev, assistantMessage])
       }
+
     } catch (err) {
       console.error('Error sending message:', err)
-      setError('Failed to send message')
+      setError(err instanceof Error ? err.message : 'Failed to send message')
     } finally {
       setIsSending(false)
+      setIsStreaming(false)
+      setStreamingContent("")
+      abortControllerRef.current = null
     }
   }
 
@@ -243,7 +353,7 @@ export function ChatPanel({
     )
   }
 
-  if (error) {
+  if (error && !messages.length) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-center px-4">
@@ -264,6 +374,32 @@ export function ChatPanel({
 
   return (
     <div className="flex flex-col h-full">
+      {/* Connection Status */}
+      <div className="flex items-center justify-end px-4 py-1 border-b border-white/5">
+        <div className="flex items-center gap-1.5 text-xs">
+          {gatewayConnected === null ? (
+            <span className="text-white/30">Checking gateway...</span>
+          ) : gatewayConnected ? (
+            <>
+              <Wifi className="h-3 w-3 text-green-400" />
+              <span className="text-green-400/70">Gateway connected</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="h-3 w-3 text-yellow-400" />
+              <span className="text-yellow-400/70">Demo mode</span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Error Banner */}
+      {error && (
+        <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20">
+          <p className="text-xs text-red-300">{error}</p>
+        </div>
+      )}
+
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
@@ -295,10 +431,27 @@ export function ChatPanel({
               />
             ))}
             
-            {/* Typing indicator */}
-            {isSending && (
+            {/* Streaming message */}
+            {isStreaming && streamingContent && (
+              <MessageBubble
+                message={{
+                  id: 'streaming',
+                  conversation_id: conversation?.id || 'demo',
+                  role: 'assistant',
+                  content: streamingContent,
+                  attachments: [],
+                  created_at: new Date().toISOString()
+                }}
+                agentName={agentName}
+                agentEmoji={agentEmoji}
+                isStreaming
+              />
+            )}
+            
+            {/* Typing indicator (before streaming starts) */}
+            {isSending && !isStreaming && (
               <div className="flex gap-3 mb-4">
-                <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
                   {agentEmoji ? (
                     <span className="text-sm">{agentEmoji}</span>
                   ) : (
