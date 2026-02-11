@@ -1511,6 +1511,10 @@ function AgentDetailPanel({
   const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'status' | 'cron' | 'memory'>('chat')
   const [activeUser, setActiveUser] = useState(defaultUserId || chatUsers[0].id) // Default to logged in user
   const [activeFile, setActiveFile] = useState(agent.files.filter(f => f.name !== 'MEMORY')[0]?.name || "")
+  const [isExpanded, setIsExpanded] = useState(false)
+  
+  // Read-only mode when viewing someone else's chat (admin view)
+  const isReadOnly = activeUser !== defaultUserId
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState("")
 
@@ -1551,10 +1555,18 @@ function AgentDetailPanel({
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.98 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.98 }}
-      className="fixed inset-4 md:inset-8 lg:inset-12 bg-black/98 border border-white/10 rounded-2xl backdrop-blur-xl z-50 flex flex-col overflow-hidden"
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      className={cn(
+        "fixed top-0 right-0 h-full bg-black/98 border-l border-white/10 backdrop-blur-xl z-50 flex flex-col overflow-hidden transition-all duration-300",
+        // Mobile: always full screen
+        "w-full",
+        // Tablet+: half screen by default, full when expanded
+        isExpanded 
+          ? "md:w-full md:border-l-0 md:rounded-none" 
+          : "md:w-[600px] lg:w-[700px] md:rounded-l-2xl"
+      )}
     >
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between border-b border-white/10 px-6 py-4">
@@ -1568,13 +1580,34 @@ function AgentDetailPanel({
               <Badge variant={agent.status === "active" ? "success" : "warning"}>
                 {agent.status}
               </Badge>
+              {isReadOnly && (
+                <Badge variant="outline" className="text-[10px] text-yellow-400 border-yellow-400/30">
+                  View Only
+                </Badge>
+              )}
             </div>
             <p className="text-sm text-white/50">{agent.role}</p>
           </div>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-5 w-5" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* Expand/Collapse button - hidden on mobile */}
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="hidden md:flex"
+            title={isExpanded ? "Collapse panel" : "Expand panel"}
+          >
+            {isExpanded ? (
+              <ChevronRight className="h-5 w-5" />
+            ) : (
+              <ChevronDown className="h-5 w-5 -rotate-90" />
+            )}
+          </Button>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -1639,8 +1672,18 @@ function AgentDetailPanel({
                 agentName={agent.name || agent.id}
                 agentEmoji={getAgentEmoji(agent.id)}
                 userId={activeUser}
+                isReadOnly={isReadOnly}
               />
             </div>
+            
+            {/* Read-only notice */}
+            {isReadOnly && (
+              <div className="flex-shrink-0 px-4 py-2 bg-yellow-500/10 border-t border-yellow-500/20">
+                <p className="text-xs text-yellow-400/80 text-center">
+                  👁️ Viewing {chatUsers.find(u => u.id === activeUser)?.name}'s conversation (read-only)
+                </p>
+              </div>
+            )}
           </div>
         )}
 
