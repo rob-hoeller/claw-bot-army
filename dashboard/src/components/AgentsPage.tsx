@@ -1517,7 +1517,7 @@ function AgentDetailPanel({
       <div className="flex-1 overflow-hidden flex flex-col">
         {/* Chat Tab */}
         {activeTab === 'chat' && (
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col min-h-0">
             {/* User Channel Selector */}
             <div className="flex-shrink-0 px-6 py-3 border-b border-white/5">
               <div className="flex items-center gap-2">
@@ -1545,7 +1545,7 @@ function AgentDetailPanel({
             </div>
             
             {/* Chat Panel */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 min-h-0 h-full">
               <ChatPanel
                 agentId={agent.id}
                 agentName={agent.name || agent.id}
