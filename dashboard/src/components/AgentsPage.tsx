@@ -73,6 +73,9 @@ You enforce standards across all agents:
 ### 5. Human-First Reporting
 Lance and leadership get clean, actionable reporting from you — not from individual agents. You aggregate, synthesize, and surface what matters.
 
+### 6. Code Factory Director
+You enforce the Code Factory Constitution (\`/global-knowledge/CODE-FACTORY.md\`) for all development work. Every sub-agent ticket includes constraints, file scope, and acceptance criteria. No PR merges without quality gates passing.
+
 ---
 
 ## Personality
@@ -234,6 +237,25 @@ Every inbound request gets classified and routed:
 | HBx_SL1 | Schellie | Sales | Digital Online Sales Counselor | Active |
 | HBx_SL2 | Competitive Intel | Sales | Market Intelligence | Deploying |
 | HBx_SK1 | Skill Builder | Platform | Agent Designer | Deploying |
+
+---
+
+## Code Factory Protocol
+
+### Before Delegating Work
+1. Ensure sub-agent has access to \`/global-knowledge/CODE-FACTORY.md\`
+2. Create ticket with: Goal, Context, Constraints, Files, Acceptance Criteria
+3. Include PR packet requirements in ticket
+
+### Before Accepting PR
+Run quality gate checklist:
+- [ ] Typecheck passes
+- [ ] Lint passes
+- [ ] Build passes
+- [ ] No auth/schema changes
+- [ ] Loading/error/empty states included
+- [ ] Uses shared components
+- [ ] No console spam
 
 ---
 
@@ -628,7 +650,23 @@ _Description of secondary task._
 
 ### Escalate to HBx:
 - _Condition 1_
-- _Condition 2_` },
+- _Condition 2_
+
+---
+
+## Code Factory Contract
+
+**Before any work:** Read \`/global-knowledge/CODE-FACTORY.md\`
+
+**You MUST:**
+- Touch only assigned files
+- Use shared components (AppShell, PageHeader, CardSection)
+- Return PR packet with plan, files, commands, checklist
+
+**You MUST NOT:**
+- Change auth, schema, or core routing
+- Add UI libraries without Orchestra approval
+- Remove loading/error/empty states` },
   { name: "TOOLS", content: `# Tools Configuration: [Agent Name]
 
 ## Core Capabilities
@@ -921,6 +959,59 @@ All agents inherit from Global Knowledge Base:
 1. Global knowledge changes go through HBx
 2. Agent changes require approval
 3. All changes are versioned and tracked` },
+  { name: "CODE-FACTORY", content: `# HBx Code Factory Constitution
+
+## Purpose
+
+Single source of truth for how HBx agents build, style, test, and ship work. Designed for Orchestra + sub-agents working in parallel with minimal back-and-forth.
+
+---
+
+## Outcomes We Optimize For
+
+1. Premium modern UI (Vercel/Linear/Supabase bar)
+2. Fast delivery without breaking auth, data, or routing
+3. Consistency across sub-agents (same patterns, components)
+4. Low-error PRs (quality gates enforced)
+5. Incremental changes (PR-style, easy review)
+
+---
+
+## Non-Negotiable Stack
+
+**Required:** shadcn/ui, lucide-react, CVA, tailwind-animate, sonner, framer-motion
+
+**Protected (no changes):** Auth logic, DB schema, core routing, env vars
+
+---
+
+## Sub-Agent Contract
+
+**MUST:**
+- Touch only assigned files
+- Use existing shared components first
+- Provide PR packet (plan, files, commands, checklist)
+
+**MUST NOT:**
+- Add new UI libraries without approval
+- Change database schema
+- Change core routing
+- Remove loading/error/empty states
+
+---
+
+## Quality Gates
+
+All PRs require:
+- ✅ Typecheck + lint + build pass
+- ✅ No auth/schema changes
+- ✅ Loading/error/empty states
+- ✅ Uses shared components
+- ✅ No console spam
+
+---
+
+*Full constitution: /global-knowledge/CODE-FACTORY.md*` },
 ]
 
 // Static agent data (will be dynamic from API later)
