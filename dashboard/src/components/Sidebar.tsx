@@ -25,7 +25,7 @@ interface SidebarProps {
 }
 
 const navItems = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { id: "dashboard", label: "Command Center", icon: LayoutDashboard },
   { id: "agents", label: "Agents", icon: Bot },
   { id: "users", label: "Users", icon: Users },
   { id: "roles", label: "Roles", icon: Shield },
