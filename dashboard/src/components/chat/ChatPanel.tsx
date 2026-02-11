@@ -67,14 +67,15 @@ export function ChatPanel({
       }
 
       // Real mode - use Supabase
-      if (!supabase) return // TypeScript guard
+      // TypeScript guard - supabase is guaranteed non-null here since isDemoMode checks it
+      const sb = supabase!
       
       try {
         setIsLoading(true)
         setError(null)
 
         // Try to find existing conversation
-        const { data: existingConv, error: fetchError } = await supabase
+        const { data: existingConv, error: fetchError } = await sb
           .from('conversations')
           .select('*')
           .eq('user_id', userId)
@@ -89,7 +90,7 @@ export function ChatPanel({
 
         // Create new conversation if none exists
         if (!conv) {
-          const { data: newConv, error: createError } = await supabase
+          const { data: newConv, error: createError } = await sb
             .from('conversations')
             .insert({
               user_id: userId,
@@ -106,7 +107,7 @@ export function ChatPanel({
         setConversation(conv)
 
         // Load messages
-        const { data: msgs, error: msgsError } = await supabase
+        const { data: msgs, error: msgsError } = await sb
           .from('messages')
           .select('*')
           .eq('conversation_id', conv.id)
@@ -158,8 +159,11 @@ export function ChatPanel({
 
     try {
       if (!isDemoMode && supabase && conversation) {
+        // TypeScript guard - supabase is guaranteed non-null in this branch
+        const sb = supabase!
+        
         // Save user message to Supabase
-        const { data: savedMsg, error: saveError } = await supabase
+        const { data: savedMsg, error: saveError } = await sb
           .from('messages')
           .insert({
             conversation_id: conversation.id,
@@ -191,7 +195,7 @@ export function ChatPanel({
         }
 
         // Save assistant message
-        const { data: savedResponse, error: responseError } = await supabase
+        const { data: savedResponse, error: responseError } = await sb
           .from('messages')
           .insert({
             conversation_id: conversation.id,
