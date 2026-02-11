@@ -37,18 +37,28 @@ export function ChatPanel({
     scrollToBottom()
   }, [messages])
 
+  // Check if userId is a valid UUID (real Supabase user) vs placeholder
+  const isValidUUID = (id: string) => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    return uuidRegex.test(id)
+  }
+
+  // Demo mode: no Supabase, no userId, or placeholder userId
+  const isDemoMode = !supabase || !userId || !isValidUUID(userId)
+
   // Load or create conversation
   useEffect(() => {
     async function initConversation() {
-      if (!supabase || !userId) {
-        // Mock mode for development
+      // Demo mode - use mock data
+      if (isDemoMode) {
         setIsLoading(false)
+        setError(null)
         setMessages([
           {
             id: '1',
-            conversation_id: 'mock',
+            conversation_id: 'demo',
             role: 'assistant',
-            content: `Hello! I'm ${agentName}. How can I help you today?`,
+            content: `Hello! I'm ${agentName}. How can I help you today?\n\n_(Demo mode — connect Supabase for persistence)_`,
             attachments: [],
             created_at: new Date().toISOString()
           }
@@ -56,6 +66,7 @@ export function ChatPanel({
         return
       }
 
+      // Real mode - use Supabase
       try {
         setIsLoading(true)
         setError(null)
@@ -124,7 +135,7 @@ export function ChatPanel({
     }
 
     initConversation()
-  }, [agentId, agentName, userId])
+  }, [agentId, agentName, userId, isDemoMode])
 
   // Handle sending a message
   const handleSend = async (content: string, attachments: Attachment[]) => {
@@ -144,7 +155,7 @@ export function ChatPanel({
     setIsSending(true)
 
     try {
-      if (supabase && conversation) {
+      if (!isDemoMode && supabase && conversation) {
         // Save user message to Supabase
         const { data: savedMsg, error: saveError } = await supabase
           .from('messages')
