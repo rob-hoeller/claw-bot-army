@@ -13,13 +13,15 @@ interface ChatPanelProps {
   agentName: string
   agentEmoji?: string
   userId?: string
+  isReadOnly?: boolean
 }
 
 export function ChatPanel({ 
   agentId, 
   agentName, 
   agentEmoji,
-  userId 
+  userId,
+  isReadOnly = false
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [conversation, setConversation] = useState<Conversation | null>(null)
@@ -473,12 +475,14 @@ export function ChatPanel({
         )}
       </div>
 
-      {/* Input Area */}
-      <ChatInput
-        onSend={handleSend}
-        disabled={isSending}
-        placeholder={`Message ${agentName}...`}
-      />
+      {/* Input Area - Hidden in read-only mode */}
+      {!isReadOnly && (
+        <ChatInput
+          onSend={handleSend}
+          disabled={isSending}
+          placeholder={`Message ${agentName}...`}
+        />
+      )}
     </div>
   )
 }
