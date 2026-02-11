@@ -12,6 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Bot,
+  Lightbulb,
+  Bug,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -27,6 +29,8 @@ interface SidebarProps {
 const navItems = [
   { id: "dashboard", label: "Command Center", icon: LayoutDashboard },
   { id: "agents", label: "Agents", icon: Bot },
+  { id: "features", label: "Features", icon: Lightbulb },
+  { id: "bugs", label: "Bugs", icon: Bug },
   { id: "users", label: "Users", icon: Users },
   { id: "roles", label: "Roles", icon: Shield },
   { id: "tenants", label: "Business Units", icon: Building2 },
