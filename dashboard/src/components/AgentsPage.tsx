@@ -1405,7 +1405,14 @@ function FilePanel({
   )
 }
 
-// Agent Detail Panel - Tabbed interface with Chat, Files, Status, etc.
+// User channel data (will come from Supabase later)
+const chatUsers = [
+  { id: 'lance', name: 'Lance Manlove', initials: 'LM', color: 'purple' },
+  { id: 'robl', name: 'Rob L', initials: 'RL', color: 'blue' },
+  { id: 'robh', name: 'Rob H', initials: 'RH', color: 'green' },
+]
+
+// Agent Detail Panel - Full Page Modal with Chat, Files, Status, etc.
 function AgentDetailPanel({
   agent,
   onClose,
@@ -1414,11 +1421,14 @@ function AgentDetailPanel({
   onClose: () => void
 }) {
   const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'status' | 'cron' | 'memory'>('chat')
-  const [activeFile, setActiveFile] = useState(agent.files[0]?.name || "")
+  const [activeUser, setActiveUser] = useState(chatUsers[0].id) // Default to first user (logged in user)
+  const [activeFile, setActiveFile] = useState(agent.files.filter(f => f.name !== 'MEMORY')[0]?.name || "")
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState("")
 
-  const currentFile = agent.files.find((f) => f.name === activeFile)
+  // Filter out MEMORY from files (it has its own tab)
+  const editableFiles = agent.files.filter(f => f.name !== 'MEMORY')
+  const currentFile = editableFiles.find((f) => f.name === activeFile)
 
   const handleEdit = () => {
     if (currentFile) {
@@ -1453,10 +1463,10 @@ function AgentDetailPanel({
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: 20 }}
-      className="fixed right-0 top-0 h-full w-full max-w-2xl border-l border-white/10 bg-black/95 backdrop-blur-xl z-50 flex flex-col"
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      className="fixed inset-4 md:inset-8 lg:inset-12 bg-black/98 border border-white/10 rounded-2xl backdrop-blur-xl z-50 flex flex-col overflow-hidden"
     >
       {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between border-b border-white/10 px-6 py-4">
@@ -1507,21 +1517,53 @@ function AgentDetailPanel({
       <div className="flex-1 overflow-hidden flex flex-col">
         {/* Chat Tab */}
         {activeTab === 'chat' && (
-          <ChatPanel
-            agentId={agent.id}
-            agentName={agent.name || agent.id}
-            agentEmoji={getAgentEmoji(agent.id)}
-          />
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* User Channel Selector */}
+            <div className="flex-shrink-0 px-6 py-3 border-b border-white/5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-white/40 mr-2">Channels:</span>
+                {chatUsers.map((user) => (
+                  <button
+                    key={user.id}
+                    onClick={() => setActiveUser(user.id)}
+                    title={user.name}
+                    className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all",
+                      activeUser === user.id
+                        ? user.color === 'purple' 
+                          ? "bg-purple-500 text-white ring-2 ring-purple-400 ring-offset-2 ring-offset-black"
+                          : user.color === 'blue'
+                            ? "bg-blue-500 text-white ring-2 ring-blue-400 ring-offset-2 ring-offset-black"
+                            : "bg-green-500 text-white ring-2 ring-green-400 ring-offset-2 ring-offset-black"
+                        : "bg-white/10 text-white/60 hover:bg-white/20"
+                    )}
+                  >
+                    {user.initials}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Chat Panel */}
+            <div className="flex-1 overflow-hidden">
+              <ChatPanel
+                agentId={agent.id}
+                agentName={agent.name || agent.id}
+                agentEmoji={getAgentEmoji(agent.id)}
+                userId={activeUser}
+              />
+            </div>
+          </div>
         )}
 
         {/* Files Tab */}
         {activeTab === 'files' && (
           <div className="flex-1 flex flex-col overflow-hidden">
-            {/* File Tabs */}
+            {/* File Tabs (excludes MEMORY - it has its own tab) */}
             <div className="flex-shrink-0 px-6 pt-4 border-b border-white/5">
               <div className="overflow-x-auto scrollbar-thin scrollbar-thumb-white/10 pb-2">
                 <div className="flex gap-1 min-w-max">
-                  {agent.files.map((file) => (
+                  {editableFiles.map((file) => (
                     <button
                       key={file.name}
                       onClick={() => {
