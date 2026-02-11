@@ -14,7 +14,14 @@ import {
   GitPullRequest,
   Bot,
   Filter,
-  Search
+  Search,
+  X,
+  ExternalLink,
+  MessageSquare,
+  Send,
+  Link2,
+  Calendar,
+  User
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -32,9 +39,21 @@ interface Feature {
   requested_by: string | null
   assigned_to: string | null
   approved_by: string | null
+  acceptance_criteria: string | null
   labels: string[] | null
   pr_url: string | null
+  pr_number: number | null
   pr_status: string | null
+  branch_name: string | null
+  created_at: string
+  updated_at: string
+}
+
+interface Comment {
+  id: string
+  author: string
+  author_emoji: string
+  content: string
   created_at: string
 }
 
@@ -54,27 +73,40 @@ const columns = [
 ]
 
 const priorityConfig = {
-  low: { color: 'bg-gray-500/20 text-gray-400', label: 'Low' },
-  medium: { color: 'bg-blue-500/20 text-blue-400', label: 'Medium' },
-  high: { color: 'bg-orange-500/20 text-orange-400', label: 'High' },
-  urgent: { color: 'bg-red-500/20 text-red-400', label: 'Urgent' },
+  low: { color: 'bg-gray-500/20 text-gray-400 border-gray-500/30', label: 'Low' },
+  medium: { color: 'bg-blue-500/20 text-blue-400 border-blue-500/30', label: 'Med' },
+  high: { color: 'bg-orange-500/20 text-orange-400 border-orange-500/30', label: 'High' },
+  urgent: { color: 'bg-red-500/20 text-red-400 border-red-500/30', label: '!!!' },
 }
 
-// Demo data for when Supabase isn't connected
+const statusConfig = {
+  backlog: { color: 'bg-gray-500/20 text-gray-400', label: 'Backlog' },
+  planned: { color: 'bg-blue-500/20 text-blue-400', label: 'Planned' },
+  in_progress: { color: 'bg-yellow-500/20 text-yellow-400', label: 'In Progress' },
+  review: { color: 'bg-purple-500/20 text-purple-400', label: 'Review' },
+  done: { color: 'bg-green-500/20 text-green-400', label: 'Done' },
+  cancelled: { color: 'bg-red-500/20 text-red-400', label: 'Cancelled' },
+}
+
+// Demo data
 const demoFeatures: Feature[] = [
   {
     id: '1',
     title: 'Agent-to-Agent Communication',
-    description: 'Enable HBx to spawn and coordinate with sub-agents',
+    description: 'Enable HBx to spawn and coordinate with sub-agents for task delegation',
     status: 'in_progress',
     priority: 'high',
     requested_by: 'HBx',
     assigned_to: 'HBx_IN2',
     approved_by: 'Lance',
+    acceptance_criteria: '- HBx can spawn sub-agents\n- Tasks route correctly\n- Results aggregate back',
     labels: ['core', 'infrastructure'],
     pr_url: null,
+    pr_number: null,
     pr_status: null,
-    created_at: new Date().toISOString(),
+    branch_name: 'hbx/agent-communication',
+    created_at: new Date(Date.now() - 86400000).toISOString(),
+    updated_at: new Date().toISOString(),
   },
   {
     id: '2',
@@ -85,52 +117,86 @@ const demoFeatures: Feature[] = [
     requested_by: 'HBx_IN3',
     assigned_to: null,
     approved_by: null,
+    acceptance_criteria: null,
     labels: ['ui', 'innovation'],
     pr_url: null,
+    pr_number: null,
     pr_status: null,
-    created_at: new Date().toISOString(),
+    branch_name: null,
+    created_at: new Date(Date.now() - 172800000).toISOString(),
+    updated_at: new Date().toISOString(),
   },
   {
     id: '3',
     title: 'Competitive Intel Automation',
-    description: 'Auto-scrape competitor pricing and inventory',
+    description: 'Auto-scrape competitor pricing',
     status: 'backlog',
     priority: 'medium',
     requested_by: 'HBx_SL2',
     assigned_to: null,
     approved_by: null,
-    labels: ['sales', 'automation'],
+    acceptance_criteria: null,
+    labels: ['sales'],
     pr_url: null,
+    pr_number: null,
     pr_status: null,
-    created_at: new Date().toISOString(),
+    branch_name: null,
+    created_at: new Date(Date.now() - 259200000).toISOString(),
+    updated_at: new Date().toISOString(),
   },
   {
     id: '4',
     title: 'Bug Board Integration',
-    description: 'Connect bug tracking with support agent workflow',
+    description: 'Connect bug tracking with support workflow',
     status: 'review',
     priority: 'high',
     requested_by: 'HBx',
     assigned_to: 'HBx_IN2',
     approved_by: 'Lance',
-    labels: ['support', 'workflow'],
-    pr_url: 'https://github.com/example/pr/19',
+    acceptance_criteria: '- Bugs sync to board\n- Support agent notified\n- Status updates flow',
+    labels: ['support'],
+    pr_url: 'https://github.com/rob-hoeller/claw-bot-army/pull/19',
+    pr_number: 19,
     pr_status: 'open',
-    created_at: new Date().toISOString(),
+    branch_name: 'hbx/bug-board',
+    created_at: new Date(Date.now() - 345600000).toISOString(),
+    updated_at: new Date().toISOString(),
   },
   {
     id: '5',
-    title: 'Real-time Activity Feed',
-    description: 'Live ticker showing all agent conversations',
+    title: 'Activity Feed',
+    description: 'Live ticker of all conversations',
     status: 'done',
     priority: 'high',
     requested_by: 'HBx',
     assigned_to: 'HBx_IN2',
     approved_by: 'Lance',
-    labels: ['ui', 'monitoring'],
-    pr_url: 'https://github.com/example/pr/18',
+    acceptance_criteria: '- Real-time updates\n- Click to navigate\n- Pause/resume',
+    labels: ['ui'],
+    pr_url: 'https://github.com/rob-hoeller/claw-bot-army/pull/18',
+    pr_number: 18,
     pr_status: 'merged',
+    branch_name: 'hbx/activity-feed',
+    created_at: new Date(Date.now() - 432000000).toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: '6',
+    title: 'Compact UI Pass',
+    description: 'Reduce spacing, fit more on screen',
+    status: 'in_progress',
+    priority: 'medium',
+    requested_by: 'Lance',
+    assigned_to: 'HBx',
+    approved_by: 'Lance',
+    acceptance_criteria: '- Tighter spacing\n- Smaller cards\n- More visible without scroll',
+    labels: ['ui', 'ux'],
+    pr_url: null,
+    pr_number: null,
+    pr_status: null,
+    branch_name: 'hbx/phase4-schema',
     created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   },
 ]
 
@@ -142,10 +208,18 @@ const demoAgents: Agent[] = [
   { id: 'HBx_SP1', name: 'Support', emoji: '🛟' },
   { id: 'HBx_SL1', name: 'Schellie', emoji: '🏠' },
   { id: 'HBx_SL2', name: 'Competitive Intel', emoji: '🔍' },
+  { id: 'Lance', name: 'Lance', emoji: '👤' },
 ]
 
-// Feature Card Component
-function FeatureCard({ feature, agents }: { feature: Feature; agents: Agent[] }) {
+const demoComments: Comment[] = [
+  { id: '1', author: 'HBx', author_emoji: '🧠', content: 'Created feature request based on platform needs', created_at: new Date(Date.now() - 86400000).toISOString() },
+  { id: '2', author: 'Lance', author_emoji: '👤', content: 'Approved - this is high priority for the platform', created_at: new Date(Date.now() - 82800000).toISOString() },
+  { id: '3', author: 'HBx_IN2', author_emoji: '🏭', content: 'Starting implementation. ETA 4 hours.', created_at: new Date(Date.now() - 79200000).toISOString() },
+  { id: '4', author: 'HBx', author_emoji: '🧠', content: 'Build passing. Ready for review when complete.', created_at: new Date(Date.now() - 3600000).toISOString() },
+]
+
+// Feature Card Component (Compact)
+function FeatureCard({ feature, agents, onClick }: { feature: Feature; agents: Agent[]; onClick: () => void }) {
   const priority = priorityConfig[feature.priority]
   const assignedAgent = agents.find(a => a.id === feature.assigned_to)
   const requestedAgent = agents.find(a => a.id === feature.requested_by)
@@ -153,123 +227,279 @@ function FeatureCard({ feature, agents }: { feature: Feature; agents: Agent[] })
   return (
     <motion.div
       layout
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      className="p-3 rounded-lg bg-white/[0.03] border border-white/10 hover:border-white/20 transition-all cursor-pointer group"
+      exit={{ opacity: 0, scale: 0.95 }}
+      onClick={onClick}
+      className="p-2 rounded-md bg-white/[0.02] border border-white/5 hover:border-white/20 hover:bg-white/[0.04] transition-all cursor-pointer group"
     >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2 mb-2">
-        <h4 className="text-sm font-medium text-white leading-tight group-hover:text-purple-300 transition-colors">
-          {feature.title}
-        </h4>
-        <Badge className={cn("text-[10px] flex-shrink-0", priority.color)}>
+      {/* Title Row */}
+      <div className="flex items-start gap-1.5 mb-1">
+        <Badge className={cn("text-[9px] px-1 py-0 h-4 flex-shrink-0 border", priority.color)}>
           {priority.label}
         </Badge>
+        <h4 className="text-xs font-medium text-white/90 leading-tight line-clamp-2 group-hover:text-purple-300 transition-colors">
+          {feature.title}
+        </h4>
       </div>
 
-      {/* Description */}
-      {feature.description && (
-        <p className="text-xs text-white/50 mb-3 line-clamp-2">
-          {feature.description}
-        </p>
-      )}
-
-      {/* Labels */}
-      {feature.labels && feature.labels.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
-          {feature.labels.map((label) => (
-            <span
-              key={label}
-              className="px-1.5 py-0.5 text-[10px] rounded bg-white/5 text-white/40"
-            >
-              {label}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {/* Requested By */}
+      {/* Footer Row */}
+      <div className="flex items-center justify-between mt-1.5">
+        <div className="flex items-center gap-1">
           {requestedAgent && (
-            <div className="flex items-center gap-1" title={`Requested by ${requestedAgent.name}`}>
-              <span className="text-xs">{requestedAgent.emoji}</span>
-            </div>
+            <span className="text-[10px]" title={requestedAgent.name}>{requestedAgent.emoji}</span>
           )}
-          
-          {/* Arrow if assigned */}
           {requestedAgent && assignedAgent && (
-            <ArrowRight className="h-3 w-3 text-white/20" />
+            <ArrowRight className="h-2 w-2 text-white/20" />
           )}
-          
-          {/* Assigned To */}
           {assignedAgent && (
-            <div className="flex items-center gap-1" title={`Assigned to ${assignedAgent.name}`}>
-              <span className="text-xs">{assignedAgent.emoji}</span>
-              <span className="text-[10px] text-white/40">{assignedAgent.id}</span>
-            </div>
-          )}
-          
-          {!assignedAgent && !requestedAgent && (
-            <Bot className="h-3 w-3 text-white/20" />
+            <span className="text-[10px]" title={assignedAgent.name}>{assignedAgent.emoji}</span>
           )}
         </div>
-
-        {/* PR Status */}
-        {feature.pr_url && (
-          <a
-            href={feature.pr_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-300"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <GitPullRequest className="h-3 w-3" />
-            {feature.pr_status === 'merged' ? 'Merged' : 'PR'}
-          </a>
-        )}
+        <div className="flex items-center gap-1">
+          {feature.pr_url && (
+            <GitPullRequest className={cn("h-3 w-3", feature.pr_status === 'merged' ? 'text-green-400' : 'text-purple-400')} />
+          )}
+          {feature.labels && feature.labels.length > 0 && (
+            <span className="text-[9px] text-white/30">{feature.labels[0]}</span>
+          )}
+        </div>
       </div>
     </motion.div>
   )
 }
 
-// Column Component
+// Feature Detail Panel
+function FeatureDetailPanel({ 
+  feature, 
+  agents, 
+  onClose 
+}: { 
+  feature: Feature
+  agents: Agent[]
+  onClose: () => void 
+}) {
+  const [newComment, setNewComment] = useState("")
+  const [comments] = useState<Comment[]>(demoComments)
+  
+  const priority = priorityConfig[feature.priority]
+  const status = statusConfig[feature.status]
+  const assignedAgent = agents.find(a => a.id === feature.assigned_to)
+  const requestedAgent = agents.find(a => a.id === feature.requested_by)
+
+  const handleSendComment = () => {
+    if (!newComment.trim()) return
+    // TODO: Save to Supabase
+    setNewComment("")
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: 20 }}
+      className="fixed top-0 right-0 h-full w-full max-w-md bg-black/98 border-l border-white/10 z-50 flex flex-col"
+    >
+      {/* Header */}
+      <div className="flex-shrink-0 p-3 border-b border-white/10">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-1">
+              <Badge className={cn("text-[9px] px-1 py-0 h-4 border", priority.color)}>
+                {priority.label}
+              </Badge>
+              <Badge className={cn("text-[9px] px-1 py-0 h-4", status.color)}>
+                {status.label}
+              </Badge>
+            </div>
+            <h2 className="text-sm font-semibold text-white leading-tight">{feature.title}</h2>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose} className="h-7 w-7 flex-shrink-0">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Description */}
+        {feature.description && (
+          <div className="p-3 border-b border-white/5">
+            <p className="text-xs text-white/70">{feature.description}</p>
+          </div>
+        )}
+
+        {/* Meta */}
+        <div className="p-3 border-b border-white/5 space-y-2">
+          <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="flex items-center gap-1.5">
+              <User className="h-3 w-3 text-white/30" />
+              <span className="text-white/50">Requested:</span>
+              {requestedAgent && (
+                <span className="text-white/80">{requestedAgent.emoji} {requestedAgent.id}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Bot className="h-3 w-3 text-white/30" />
+              <span className="text-white/50">Assigned:</span>
+              {assignedAgent ? (
+                <span className="text-white/80">{assignedAgent.emoji} {assignedAgent.id}</span>
+              ) : (
+                <span className="text-white/40">Unassigned</span>
+              )}
+            </div>
+            {feature.approved_by && (
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="h-3 w-3 text-green-400/50" />
+                <span className="text-white/50">Approved:</span>
+                <span className="text-white/80">{feature.approved_by}</span>
+              </div>
+            )}
+            <div className="flex items-center gap-1.5">
+              <Calendar className="h-3 w-3 text-white/30" />
+              <span className="text-white/50">Created:</span>
+              <span className="text-white/80">{new Date(feature.created_at).toLocaleDateString()}</span>
+            </div>
+          </div>
+
+          {/* Labels */}
+          {feature.labels && feature.labels.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {feature.labels.map((label) => (
+                <span key={label} className="px-1.5 py-0.5 text-[9px] rounded bg-white/5 text-white/50">
+                  {label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Links */}
+        <div className="p-3 border-b border-white/5 space-y-1.5">
+          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Links</div>
+          
+          {feature.branch_name && (
+            <div className="flex items-center gap-2 text-[11px]">
+              <Link2 className="h-3 w-3 text-white/30" />
+              <span className="text-white/50">Branch:</span>
+              <code className="text-purple-400 bg-purple-400/10 px-1 rounded text-[10px]">{feature.branch_name}</code>
+            </div>
+          )}
+          
+          {feature.pr_url && (
+            <a 
+              href={feature.pr_url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 text-[11px] text-purple-400 hover:text-purple-300"
+            >
+              <GitPullRequest className="h-3 w-3" />
+              <span>PR #{feature.pr_number}</span>
+              <Badge className={cn("text-[9px] px-1 py-0 h-4", 
+                feature.pr_status === 'merged' ? 'bg-green-500/20 text-green-400' : 'bg-purple-500/20 text-purple-400'
+              )}>
+                {feature.pr_status}
+              </Badge>
+              <ExternalLink className="h-2.5 w-2.5" />
+            </a>
+          )}
+
+          {!feature.branch_name && !feature.pr_url && (
+            <p className="text-[11px] text-white/30">No links yet</p>
+          )}
+        </div>
+
+        {/* Acceptance Criteria */}
+        {feature.acceptance_criteria && (
+          <div className="p-3 border-b border-white/5">
+            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Acceptance Criteria</div>
+            <pre className="text-[11px] text-white/70 whitespace-pre-wrap font-mono">{feature.acceptance_criteria}</pre>
+          </div>
+        )}
+
+        {/* Comments/Activity */}
+        <div className="p-3">
+          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Activity</div>
+          <div className="space-y-2">
+            {comments.map((comment) => (
+              <div key={comment.id} className="flex gap-2">
+                <span className="text-sm flex-shrink-0">{comment.author_emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-[11px] font-medium text-white/80">{comment.author}</span>
+                    <span className="text-[9px] text-white/30">
+                      {new Date(comment.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-white/60 mt-0.5">{comment.content}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Comment Input */}
+      <div className="flex-shrink-0 p-3 border-t border-white/10">
+        <div className="flex gap-2">
+          <Input
+            placeholder="Add comment..."
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSendComment()}
+            className="flex-1 h-8 text-xs bg-white/5 border-white/10"
+          />
+          <Button size="sm" onClick={handleSendComment} className="h-8 w-8 p-0">
+            <Send className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+    </motion.div>
+  )
+}
+
+// Column Component (Compact)
 function Column({ 
   column, 
   features, 
-  agents 
+  agents,
+  onFeatureClick
 }: { 
   column: typeof columns[0]
   features: Feature[]
   agents: Agent[]
+  onFeatureClick: (feature: Feature) => void
 }) {
   const Icon = column.icon
   const columnFeatures = features.filter(f => f.status === column.id)
 
   return (
-    <div className="flex-1 min-w-[280px] max-w-[320px]">
+    <div className="flex-1 min-w-[180px] max-w-[220px]">
       {/* Column Header */}
-      <div className="flex items-center gap-2 mb-3 px-1">
-        <Icon className={cn("h-4 w-4", column.color)} />
-        <h3 className="text-sm font-medium text-white">{column.label}</h3>
-        <span className="text-xs text-white/40 bg-white/5 px-1.5 py-0.5 rounded">
+      <div className="flex items-center gap-1.5 mb-2 px-1">
+        <Icon className={cn("h-3 w-3", column.color)} />
+        <h3 className="text-[11px] font-medium text-white/80">{column.label}</h3>
+        <span className="text-[10px] text-white/30 bg-white/5 px-1 rounded">
           {columnFeatures.length}
         </span>
       </div>
 
       {/* Cards */}
-      <div className="space-y-2 min-h-[200px]">
+      <div className="space-y-1.5 min-h-[100px]">
         <AnimatePresence mode="popLayout">
           {columnFeatures.map((feature) => (
-            <FeatureCard key={feature.id} feature={feature} agents={agents} />
+            <FeatureCard 
+              key={feature.id} 
+              feature={feature} 
+              agents={agents}
+              onClick={() => onFeatureClick(feature)}
+            />
           ))}
         </AnimatePresence>
         
         {columnFeatures.length === 0 && (
-          <div className="p-4 rounded-lg border border-dashed border-white/10 text-center">
-            <p className="text-xs text-white/30">No features</p>
+          <div className="p-2 rounded border border-dashed border-white/10 text-center">
+            <p className="text-[10px] text-white/20">Empty</p>
           </div>
         )}
       </div>
@@ -284,6 +514,7 @@ export function FeatureBoard() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [filterPriority, setFilterPriority] = useState<string | null>(null)
+  const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null)
   const isDemoMode = !supabase
 
   useEffect(() => {
@@ -298,7 +529,6 @@ export function FeatureBoard() {
       try {
         const sb = supabase!
         
-        // Load features
         const { data: featuresData, error: featuresError } = await sb
           .from('features')
           .select('*')
@@ -308,7 +538,6 @@ export function FeatureBoard() {
 
         if (featuresError) throw featuresError
         
-        // Load agents
         const { data: agentsData, error: agentsError } = await sb
           .from('agents')
           .select('id, name, emoji')
@@ -319,7 +548,6 @@ export function FeatureBoard() {
         setAgents(agentsData || [])
       } catch (err) {
         console.error('Error loading data:', err)
-        // Fallback to demo data
         setFeatures(demoFeatures)
         setAgents(demoAgents)
       } finally {
@@ -330,7 +558,6 @@ export function FeatureBoard() {
     loadData()
   }, [isDemoMode])
 
-  // Filter features
   const filteredFeatures = features.filter(f => {
     if (searchQuery && !f.title.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false
@@ -343,61 +570,61 @@ export function FeatureBoard() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-white/50">Loading features...</p>
+      <div className="flex items-center justify-center h-40">
+        <div className="flex items-center gap-2">
+          <div className="h-4 w-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs text-white/50">Loading...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-white">Feature Board</h2>
-          <p className="text-sm text-white/50">Track feature requests and development progress</p>
+          <h2 className="text-sm font-semibold text-white">Feature Board</h2>
+          <p className="text-[11px] text-white/40">Track requests and progress</p>
         </div>
-        <Button size="sm" className="gap-2">
-          <Plus className="h-4 w-4" />
-          New Feature
+        <Button size="sm" className="h-7 text-xs gap-1">
+          <Plus className="h-3 w-3" />
+          New
         </Button>
       </div>
 
-      {/* Demo Mode Banner */}
+      {/* Demo Banner */}
       {isDemoMode && (
-        <div className="px-4 py-2 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
-          <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-yellow-400" />
-            <p className="text-sm text-yellow-400/80">
-              Demo mode — Run migration SQL in Supabase for live data
+        <div className="px-2 py-1.5 rounded bg-yellow-500/10 border border-yellow-500/20">
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className="h-3 w-3 text-yellow-400" />
+            <p className="text-[10px] text-yellow-400/80">
+              Demo mode — Run migration in Supabase for live data
             </p>
           </div>
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/30" />
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-[200px]">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-white/30" />
           <Input
-            placeholder="Search features..."
+            placeholder="Search..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 bg-white/5 border-white/10"
+            className="h-7 pl-7 text-xs bg-white/5 border-white/10"
           />
         </div>
         
-        <div className="flex items-center gap-1">
-          <Filter className="h-4 w-4 text-white/30 mr-1" />
+        <div className="flex items-center gap-0.5">
+          <Filter className="h-3 w-3 text-white/30 mr-1" />
           {(['urgent', 'high', 'medium', 'low'] as const).map((p) => (
             <button
               key={p}
               onClick={() => setFilterPriority(filterPriority === p ? null : p)}
               className={cn(
-                "px-2 py-1 text-xs rounded transition-all",
+                "px-1.5 py-0.5 text-[10px] rounded transition-all",
                 filterPriority === p
                   ? priorityConfig[p].color
                   : "bg-white/5 text-white/40 hover:bg-white/10"
@@ -410,16 +637,37 @@ export function FeatureBoard() {
       </div>
 
       {/* Board */}
-      <div className="flex gap-4 overflow-x-auto pb-4">
+      <div className="flex gap-2 overflow-x-auto pb-2">
         {columns.map((column) => (
           <Column
             key={column.id}
             column={column}
             features={filteredFeatures}
             agents={agents}
+            onFeatureClick={setSelectedFeature}
           />
         ))}
       </div>
+
+      {/* Detail Panel */}
+      <AnimatePresence>
+        {selectedFeature && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/60 z-40"
+              onClick={() => setSelectedFeature(null)}
+            />
+            <FeatureDetailPanel
+              feature={selectedFeature}
+              agents={agents}
+              onClose={() => setSelectedFeature(null)}
+            />
+          </>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
