@@ -280,16 +280,87 @@ function FeatureDetailPanel({
   onClose: () => void 
 }) {
   const [newComment, setNewComment] = useState("")
-  const [comments] = useState<Comment[]>(demoComments)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [loadingComments, setLoadingComments] = useState(true)
   
   const priority = priorityConfig[feature.priority]
   const status = statusConfig[feature.status]
   const assignedAgent = agents.find(a => a.id === feature.assigned_to)
   const requestedAgent = agents.find(a => a.id === feature.requested_by)
 
-  const handleSendComment = () => {
+  // Load comments from Supabase
+  useEffect(() => {
+    async function loadComments() {
+      if (!supabase) {
+        setComments(demoComments)
+        setLoadingComments(false)
+        return
+      }
+      
+      try {
+        const { data, error } = await supabase
+          .from('feature_comments')
+          .select('*')
+          .eq('feature_id', feature.id)
+          .order('created_at', { ascending: true })
+        
+        if (error) throw error
+        
+        // Map to Comment format
+        const mappedComments: Comment[] = (data || []).map((c: { id: string; agent_id: string; message: string; created_at: string }) => {
+          const agent = agents.find(a => a.id === c.agent_id)
+          return {
+            id: c.id,
+            author: c.agent_id,
+            author_emoji: agent?.emoji || '🤖',
+            content: c.message,
+            created_at: c.created_at
+          }
+        })
+        
+        setComments(mappedComments)
+      } catch (err) {
+        console.error('Error loading comments:', err)
+        setComments(demoComments)
+      } finally {
+        setLoadingComments(false)
+      }
+    }
+    
+    loadComments()
+  }, [feature.id, agents])
+
+  const handleSendComment = async () => {
     if (!newComment.trim()) return
-    // TODO: Save to Supabase
+    
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('feature_comments')
+          .insert({
+            feature_id: feature.id,
+            agent_id: 'Lance', // TODO: Get from auth context
+            message: newComment.trim(),
+            comment_type: 'message'
+          })
+          .select()
+          .single()
+        
+        if (error) throw error
+        
+        // Add to local state
+        setComments(prev => [...prev, {
+          id: data.id,
+          author: 'Lance',
+          author_emoji: '👤',
+          content: data.message,
+          created_at: data.created_at
+        }])
+      } catch (err) {
+        console.error('Error saving comment:', err)
+      }
+    }
+    
     setNewComment("")
   }
 
@@ -421,20 +492,29 @@ function FeatureDetailPanel({
         <div className="p-3">
           <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Activity</div>
           <div className="space-y-2">
-            {comments.map((comment) => (
-              <div key={comment.id} className="flex gap-2">
-                <span className="text-sm flex-shrink-0">{comment.author_emoji}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-[11px] font-medium text-white/80">{comment.author}</span>
-                    <span className="text-[9px] text-white/30">
-                      {new Date(comment.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-white/60 mt-0.5">{comment.content}</p>
-                </div>
+            {loadingComments ? (
+              <div className="flex items-center gap-2 py-2">
+                <div className="h-3 w-3 border border-white/20 border-t-purple-400 rounded-full animate-spin" />
+                <span className="text-[10px] text-white/30">Loading activity...</span>
               </div>
-            ))}
+            ) : comments.length === 0 ? (
+              <p className="text-[11px] text-white/30 py-2">No activity yet</p>
+            ) : (
+              comments.map((comment) => (
+                <div key={comment.id} className="flex gap-2">
+                  <span className="text-sm flex-shrink-0">{comment.author_emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[11px] font-medium text-white/80">{comment.author}</span>
+                      <span className="text-[9px] text-white/30">
+                        {new Date(comment.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-white/60 mt-0.5 whitespace-pre-wrap">{comment.content}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
