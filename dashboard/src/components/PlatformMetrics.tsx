@@ -5,15 +5,18 @@ import { motion } from "framer-motion"
 import { Cpu, HardDrive, Server, Gauge, Activity, Clock } from "lucide-react"
 import CardSection from "@/components/CardSection"
 
-interface Metrics {
-  cpu: number
-  memory: number
-  disk: number
-  load: number
-  uptime: string
-  sessions: number
-  gateway: "online" | "offline"
-  lastUpdated: string
+interface MetricsResponse {
+  stats: {
+    cpu: { current: number; avg: number; max: number }
+    memory: { current: number; avg: number; max: number }
+    load: { current: number; avg: number; max: number }
+    sessions: { current: number; avg: number; max: number }
+    gateway: { status: string; latency: number; uptime: number }
+    samples: number
+    period: { from: string; to: string }
+  } | null
+  type: string
+  hours: number
 }
 
 type Status = "good" | "warning" | "critical"
@@ -70,16 +73,18 @@ function MetricItem({ icon: Icon, label, value, unit, status }: MetricItemProps)
 }
 
 export default function PlatformMetrics() {
-  const [metrics, setMetrics] = useState<Metrics | null>(null)
+  const [stats, setStats] = useState<MetricsResponse["stats"]>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
 
   const fetchMetrics = async () => {
     try {
       const res = await fetch("/api/metrics")
       if (!res.ok) throw new Error("Failed to fetch metrics")
-      const data = await res.json()
-      setMetrics(data)
+      const data: MetricsResponse = await res.json()
+      setStats(data.stats)
+      setLastUpdated(new Date())
       setError(null)
     } catch (err) {
       setError("Unable to fetch metrics")
@@ -107,15 +112,22 @@ export default function PlatformMetrics() {
     )
   }
 
-  if (error || !metrics) {
+  if (error || !stats) {
     return (
       <CardSection title="Platform Metrics" description="Infrastructure health">
-        <div className="p-4 rounded-lg bg-red-500/5 border border-red-500/20 text-center">
-          <p className="text-red-400 text-sm">{error || "No metrics available"}</p>
+        <div className="p-4 rounded-lg bg-yellow-500/5 border border-yellow-500/20 text-center">
+          <p className="text-yellow-400 text-sm">
+            {error || "Waiting for metrics data..."}
+          </p>
+          <p className="text-white/30 text-xs mt-1">
+            Metrics are collected every 5 minutes from the gateway
+          </p>
         </div>
       </CardSection>
     )
   }
+
+  const gatewayStatus = stats.gateway?.status === "ok" ? "online" : "offline"
 
   return (
     <CardSection
@@ -124,10 +136,10 @@ export default function PlatformMetrics() {
         <span className="flex items-center gap-2">
           <span
             className={`w-2 h-2 rounded-full ${
-              metrics.gateway === "online" ? "bg-green-500" : "bg-red-500"
+              gatewayStatus === "online" ? "bg-green-500" : "bg-red-500"
             }`}
           />
-          Gateway {metrics.gateway}
+          Gateway {gatewayStatus}
         </span>
       }
     >
@@ -139,46 +151,54 @@ export default function PlatformMetrics() {
         <MetricItem
           icon={Cpu}
           label="CPU"
-          value={metrics.cpu.toFixed(1)}
+          value={(stats.cpu?.current ?? 0).toFixed(1)}
           unit="%"
-          status={getStatus(metrics.cpu, 70, 90)}
+          status={getStatus(stats.cpu?.current ?? 0, 70, 90)}
         />
         <MetricItem
           icon={Server}
           label="Memory"
-          value={metrics.memory.toFixed(1)}
+          value={(stats.memory?.current ?? 0).toFixed(1)}
           unit="%"
-          status={getStatus(metrics.memory, 80, 95)}
-        />
-        <MetricItem
-          icon={HardDrive}
-          label="Disk"
-          value={metrics.disk.toFixed(0)}
-          unit="%"
-          status={getStatus(metrics.disk, 80, 95)}
+          status={getStatus(stats.memory?.current ?? 0, 80, 95)}
         />
         <MetricItem
           icon={Gauge}
           label="Load"
-          value={metrics.load.toFixed(2)}
-          status={getStatus(metrics.load * 100, 75, 100)}
+          value={(stats.load?.current ?? 0).toFixed(1)}
+          unit="%"
+          status={getStatus(stats.load?.current ?? 0, 75, 100)}
         />
         <MetricItem
           icon={Activity}
           label="Sessions"
-          value={metrics.sessions}
-          status={getStatus(metrics.sessions, 12, 15)}
+          value={stats.sessions?.current ?? 0}
+          status={getStatus(stats.sessions?.current ?? 0, 12, 15)}
+        />
+        <MetricItem
+          icon={HardDrive}
+          label="Gateway Uptime"
+          value={`${stats.gateway?.uptime ?? 0}%`}
+          status={getStatus(100 - (stats.gateway?.uptime ?? 100), 5, 10)}
         />
         <MetricItem
           icon={Clock}
-          label="Uptime"
-          value={metrics.uptime}
-          status="good"
+          label="Latency"
+          value={stats.gateway?.latency ?? 0}
+          unit="ms"
+          status={getStatus(stats.gateway?.latency ?? 0, 200, 500)}
         />
       </motion.div>
-      <p className="text-white/20 text-xs mt-3 text-right">
-        Updated: {new Date(metrics.lastUpdated).toLocaleTimeString()}
-      </p>
+      {lastUpdated && (
+        <p className="text-white/20 text-xs mt-3 text-right">
+          Updated: {lastUpdated.toLocaleTimeString()}
+        </p>
+      )}
+      {stats.samples > 0 && (
+        <p className="text-white/15 text-xs text-right">
+          {stats.samples} samples from last {24}h
+        </p>
+      )}
     </CardSection>
   )
 }
