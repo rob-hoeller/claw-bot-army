@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils"
 
 interface CardSectionProps {
   title?: string
-  description?: string
+  description?: React.ReactNode
   children: React.ReactNode
   className?: string
   action?: React.ReactNode
