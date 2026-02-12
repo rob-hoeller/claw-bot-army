@@ -1550,24 +1550,52 @@ function FilePanel({
   )
 }
 
-// User channel data (will come from Supabase later)
+// User channel data - maps to Supabase users
 const chatUsers = [
-  { id: 'lance', name: 'Lance Manlove', initials: 'LM', color: 'purple', email: 'lance@' },
-  { id: 'robl', name: 'Rob L', initials: 'RL', color: 'blue', email: 'robl@' },
-  { id: 'robh', name: 'Rob H', initials: 'RH', color: 'green', email: 'robh@' },
+  { id: 'lance', name: 'Lance Manlove', initials: 'LM', color: 'purple' },
+  { id: 'robl', name: 'Rob Lepard', initials: 'RL', color: 'blue' },
+  { id: 'robh', name: 'Rob Hoeller', initials: 'RH', color: 'green' },
 ]
 
-// Detect current user from various sources
-function useCurrentUser() {
-  // TODO: Get from Supabase auth session
-  // For now, check localStorage or default to first user
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('hbx-current-user')
-    if (stored && chatUsers.find(u => u.id === stored)) {
-      return stored
+// Map Supabase user to chat user ID
+// Priority: 1) user_metadata.channel_id, 2) full_name match, 3) email match, 4) default
+function mapUserToChannelId(userEmail?: string, userMetadata?: Record<string, unknown>): string {
+  // 1. Check user_metadata.channel_id (most reliable - set in Supabase)
+  if (userMetadata?.channel_id && typeof userMetadata.channel_id === 'string') {
+    const channelId = userMetadata.channel_id.toLowerCase()
+    if (chatUsers.find(u => u.id === channelId)) {
+      return channelId
     }
   }
-  return chatUsers[0].id // Default to Lance
+  
+  // 2. Check full_name in metadata
+  const fullName = userMetadata?.full_name
+  if (fullName && typeof fullName === 'string') {
+    const nameLower = fullName.toLowerCase()
+    if (nameLower.includes('lance') || nameLower.includes('manlove')) return 'lance'
+    if (nameLower.includes('lepard')) return 'robl'
+    if (nameLower.includes('hoeller')) return 'robh'
+  }
+  
+  // 3. Check email
+  if (userEmail) {
+    const emailLower = userEmail.toLowerCase()
+    
+    // Check for name patterns in email
+    if (emailLower.includes('lance') || emailLower.includes('lmanlove') || emailLower.includes('lm@')) return 'lance'
+    if (emailLower.includes('lepard') || emailLower.includes('rlepard') || emailLower.includes('robl') || emailLower.includes('rl@')) return 'robl'
+    if (emailLower.includes('hoeller') || emailLower.includes('rhoeller') || emailLower.includes('robh') || emailLower.includes('rh@')) return 'robh'
+    
+    // Check for initials at start of email
+    const emailPrefix = emailLower.split('@')[0]
+    if (emailPrefix === 'lm' || emailPrefix.startsWith('lm.') || emailPrefix.startsWith('lm_')) return 'lance'
+    if (emailPrefix === 'rl' || emailPrefix.startsWith('rl.') || emailPrefix.startsWith('rl_')) return 'robl'  
+    if (emailPrefix === 'rh' || emailPrefix.startsWith('rh.') || emailPrefix.startsWith('rh_')) return 'robh'
+  }
+  
+  // 4. Default to first user
+  console.warn('[AgentsPage] Could not map user to channel, defaulting to lance:', { userEmail, userMetadata })
+  return chatUsers[0].id
 }
 
 // Agent Detail Panel - Full Page Modal with Chat, Files, Status, etc.
@@ -1899,13 +1927,19 @@ function AgentDetailPanel({
   )
 }
 
+// Props interface for AgentsPage
+interface AgentsPageProps {
+  userEmail?: string
+  userMetadata?: Record<string, unknown>
+}
+
 // Main Agents Page
-export default function AgentsPage() {
+export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps) {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showGlobalKnowledge, setShowGlobalKnowledge] = useState(false)
   const [showActivityFeed, setShowActivityFeed] = useState(true)
-  const currentUserId = useCurrentUser()
+  const currentUserId = mapUserToChannelId(userEmail, userMetadata)
 
   // Handle clicking on an activity item
   const handleActivityClick = (item: ActivityItemData) => {

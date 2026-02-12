@@ -141,7 +141,7 @@ export default function Home() {
       case "dashboard":
         return <Dashboard />
       case "agents":
-        return <AgentsPage />
+        return <AgentsPage userEmail={user?.email} userMetadata={user?.user_metadata} />
       case "features":
         return <FeatureBoard />
       case "bugs":
