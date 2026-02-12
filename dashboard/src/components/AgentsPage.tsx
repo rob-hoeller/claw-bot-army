@@ -1550,17 +1550,16 @@ function FilePanel({
   )
 }
 
-// User channel data - maps to Supabase users
+// User channel data - maps to Supabase users by email
 const chatUsers = [
-  { id: 'lance', name: 'Lance Manlove', initials: 'LM', color: 'purple' },
-  { id: 'robl', name: 'Rob Lepard', initials: 'RL', color: 'blue' },
-  { id: 'robh', name: 'Rob Hoeller', initials: 'RH', color: 'green' },
+  { id: 'lance', name: 'Lance Manlove', initials: 'LM', color: 'purple', email: 'lance@schellbrothers.com' },
+  { id: 'robl', name: 'Rob Lepard', initials: 'RL', color: 'blue', email: 'rob.lepard@schellbrothers.com' },
+  { id: 'robh', name: 'Rob Hoeller', initials: 'RH', color: 'green', email: 'rob@schellbrothers.com' },
 ]
 
-// Map Supabase user to chat user ID
-// Priority: 1) user_metadata.channel_id, 2) full_name match, 3) email match, 4) default
+// Map Supabase user to chat user ID by email
 function mapUserToChannelId(userEmail?: string, userMetadata?: Record<string, unknown>): string {
-  // 1. Check user_metadata.channel_id (most reliable - set in Supabase)
+  // 1. Check user_metadata.channel_id (override if set)
   if (userMetadata?.channel_id && typeof userMetadata.channel_id === 'string') {
     const channelId = userMetadata.channel_id.toLowerCase()
     if (chatUsers.find(u => u.id === channelId)) {
@@ -1568,33 +1567,17 @@ function mapUserToChannelId(userEmail?: string, userMetadata?: Record<string, un
     }
   }
   
-  // 2. Check full_name in metadata
-  const fullName = userMetadata?.full_name
-  if (fullName && typeof fullName === 'string') {
-    const nameLower = fullName.toLowerCase()
-    if (nameLower.includes('lance') || nameLower.includes('manlove')) return 'lance'
-    if (nameLower.includes('lepard')) return 'robl'
-    if (nameLower.includes('hoeller')) return 'robh'
-  }
-  
-  // 3. Check email
+  // 2. Match by exact email (primary method)
   if (userEmail) {
     const emailLower = userEmail.toLowerCase()
-    
-    // Check for name patterns in email
-    if (emailLower.includes('lance') || emailLower.includes('lmanlove') || emailLower.includes('lm@')) return 'lance'
-    if (emailLower.includes('lepard') || emailLower.includes('rlepard') || emailLower.includes('robl') || emailLower.includes('rl@')) return 'robl'
-    if (emailLower.includes('hoeller') || emailLower.includes('rhoeller') || emailLower.includes('robh') || emailLower.includes('rh@')) return 'robh'
-    
-    // Check for initials at start of email
-    const emailPrefix = emailLower.split('@')[0]
-    if (emailPrefix === 'lm' || emailPrefix.startsWith('lm.') || emailPrefix.startsWith('lm_')) return 'lance'
-    if (emailPrefix === 'rl' || emailPrefix.startsWith('rl.') || emailPrefix.startsWith('rl_')) return 'robl'  
-    if (emailPrefix === 'rh' || emailPrefix.startsWith('rh.') || emailPrefix.startsWith('rh_')) return 'robh'
+    const match = chatUsers.find(u => u.email.toLowerCase() === emailLower)
+    if (match) {
+      return match.id
+    }
   }
   
-  // 4. Default to first user
-  console.warn('[AgentsPage] Could not map user to channel, defaulting to lance:', { userEmail, userMetadata })
+  // 3. Default to first user (Lance)
+  console.warn('[AgentsPage] Could not map user to channel, defaulting to lance:', { userEmail })
   return chatUsers[0].id
 }
 
