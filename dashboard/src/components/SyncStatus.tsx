@@ -1,11 +1,8 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { RefreshCw } from "lucide-react"
-
-interface SyncStatusProps {
-  lastSynced: Date | null
-  isLoading?: boolean
-}
+import { supabase } from "@/lib/supabase"
 
 function formatRelativeTime(date: Date | null | undefined): string {
   if (!date || !(date instanceof Date) || isNaN(date.getTime())) {
@@ -35,11 +32,34 @@ function formatRelativeTime(date: Date | null | undefined): string {
   }
 }
 
-export default function SyncStatus({ lastSynced, isLoading }: SyncStatusProps) {
-  // Defensive: don't render anything if no state
+export default function SyncStatus() {
+  const [lastSynced, setLastSynced] = useState<Date | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    // Simple check - just ping agents table to verify connection
+    const checkSync = async () => {
+      if (!supabase) {
+        setIsLoading(false)
+        return
+      }
+      
+      try {
+        await supabase.from("agents").select("id").limit(1)
+        setLastSynced(new Date())
+      } catch (err) {
+        console.warn("SyncStatus: Failed to check sync", err)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    
+    checkSync()
+  }, [])
+
+  // Don't render anything if no state
   if (!lastSynced && !isLoading) return null
 
-  // Defensive: wrap in try/catch for any unexpected errors
   try {
     const timeText = lastSynced ? formatRelativeTime(lastSynced) : ""
     
@@ -59,7 +79,6 @@ export default function SyncStatus({ lastSynced, isLoading }: SyncStatusProps) {
       </div>
     )
   } catch {
-    // If anything fails, just don't render the component
     return null
   }
 }
