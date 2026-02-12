@@ -12,6 +12,7 @@ import AgentsPage from "@/components/AgentsPage"
 import AppShell from "@/components/AppShell"
 import { FeatureBoard } from "@/components/features"
 import { MonitoringPage } from "@/components/MonitoringPage"
+import { TokenUsagePage } from "@/components/TokenUsagePage"
 import { Loader2 } from "lucide-react"
 
 // Placeholder pages for navigation
@@ -147,6 +148,8 @@ export default function Home() {
         return <FeatureBoard />
       case "monitoring":
         return <MonitoringPage />
+      case "usage":
+        return <TokenUsagePage />
       case "bugs":
         return <PlaceholderPage title="Bugs" />
       case "settings":

@@ -70,3 +70,5 @@ MEMORY.md
 | Date | Focus | Key Outcomes |
 |------|-------|--------------|
 | 2026-02-10 | Platform Setup | Dashboard deployed, agents configured |
+### 2026-02-12T13:56:17Z
+Single source of truth architecture established: Supabase agents table is the canonical source for all agent config files. Dashboard reads/writes directly. OpenClaw syncs every 30 min for memory, 3x daily for other files.

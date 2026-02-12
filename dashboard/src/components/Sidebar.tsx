@@ -15,6 +15,7 @@ import {
   Lightbulb,
   Bug,
   Activity,
+  Coins,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -31,6 +32,7 @@ const navItems = [
   { id: "dashboard", label: "Command Center", icon: LayoutDashboard },
   { id: "agents", label: "Agents", icon: Bot },
   { id: "monitoring", label: "Monitoring", icon: Activity },
+  { id: "usage", label: "Usage & Costs", icon: Coins },
   { id: "features", label: "Features", icon: Lightbulb },
   { id: "bugs", label: "Bugs", icon: Bug },
   { id: "users", label: "Users", icon: Users },
