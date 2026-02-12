@@ -14,6 +14,7 @@ import {
   Bot,
   Lightbulb,
   Bug,
+  Activity,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -29,6 +30,7 @@ interface SidebarProps {
 const navItems = [
   { id: "dashboard", label: "Command Center", icon: LayoutDashboard },
   { id: "agents", label: "Agents", icon: Bot },
+  { id: "monitoring", label: "Monitoring", icon: Activity },
   { id: "features", label: "Features", icon: Lightbulb },
   { id: "bugs", label: "Bugs", icon: Bug },
   { id: "users", label: "Users", icon: Users },
