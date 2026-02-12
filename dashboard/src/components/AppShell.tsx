@@ -4,6 +4,7 @@ import { useState } from "react"
 import { User } from "@supabase/supabase-js"
 import Header from "./Header"
 import Sidebar from "./Sidebar"
+import { useAgents } from "@/hooks/useAgents"
 
 interface AppShellProps {
   user: User
@@ -24,6 +25,7 @@ export default function AppShell({
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const { loading: isSyncing, lastSynced } = useAgents()
 
   return (
     <div className="min-h-screen bg-black">
@@ -32,6 +34,8 @@ export default function AppShell({
         onSignOut={onSignOut}
         onSettingsClick={onSettingsClick}
         onMenuClick={() => setSidebarOpen(true)}
+        lastSynced={lastSynced}
+        isSyncing={isSyncing}
       />
       <div className="flex">
         <Sidebar

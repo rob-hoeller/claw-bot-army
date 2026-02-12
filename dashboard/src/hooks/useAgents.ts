@@ -57,6 +57,7 @@ export function useAgents() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastSynced, setLastSynced] = useState<Date | null>(null)
 
   const fetchAgents = useCallback(async () => {
     if (!supabase) {
@@ -105,6 +106,7 @@ export function useAgents() {
 
       setAgents(parsed)
       setError(null)
+      setLastSynced(new Date())
     } catch (err) {
       console.error("Failed to fetch agents:", err)
       setError(err instanceof Error ? err.message : "Failed to fetch agents")
@@ -155,6 +157,7 @@ export function useAgents() {
     agents,
     loading,
     error,
+    lastSynced,
     refresh: fetchAgents,
     updateAgentFile,
   }
