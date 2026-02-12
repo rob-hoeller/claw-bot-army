@@ -16,6 +16,8 @@ import {
   AlertTriangle,
   Loader2,
   RefreshCw,
+  History,
+  Calendar,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -23,6 +25,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAgents, buildAgentTree, getChildAgents, Agent } from "@/hooks/useAgents"
+import { useMemoryLogs, DailyMemoryLog } from "@/hooks/useMemoryLogs"
 
 const departments = ["Platform", "Sales", "Innovation", "Support", "Warranty", "Construction"]
 
@@ -229,6 +232,72 @@ function NewAgentPanel({ onClose }: { onClose: () => void }) {
   )
 }
 
+// Memory Logs Component
+function MemoryLogsPanel({ agentId }: { agentId: string }) {
+  const { logs, loading, error, refresh } = useMemoryLogs(agentId)
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="h-20 bg-white/5 rounded-lg animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="rounded-lg bg-red-500/5 border border-red-500/20 p-4 text-center">
+          <p className="text-red-400 text-sm">{error}</p>
+          <Button variant="ghost" size="sm" onClick={refresh} className="mt-2">
+            <RefreshCw className="h-3 w-3 mr-1" />
+            Retry
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (logs.length === 0) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center h-full">
+        <History className="h-12 w-12 text-white/20 mb-4" />
+        <p className="text-white/40">No memory logs yet</p>
+        <p className="text-white/30 text-sm mt-1">New memories will appear here</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-6 space-y-6 overflow-auto">
+      {logs.map((day) => (
+        <div key={day.date}>
+          <div className="flex items-center gap-2 mb-3">
+            <Calendar className="h-4 w-4 text-purple-400" />
+            <h3 className="text-sm font-medium text-white">{day.date}</h3>
+            <span className="text-xs text-white/40">({day.entries.length} entries)</span>
+          </div>
+          <div className="space-y-2 pl-6 border-l border-white/10">
+            {day.entries.map((entry) => (
+              <div
+                key={entry.id}
+                className="p-3 rounded-lg bg-white/[0.02] border border-white/5"
+              >
+                <p className="text-sm text-white/70">{entry.content}</p>
+                <p className="text-xs text-white/30 mt-2">
+                  {new Date(entry.timestamp).toLocaleTimeString()}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // Agent Detail Panel Component
 function AgentDetailPanel({
   agent,
@@ -341,6 +410,13 @@ function AgentDetailPanel({
                     {file.name}.md
                   </TabsTrigger>
                 ))}
+                <TabsTrigger
+                  value="__memory_logs__"
+                  className="data-[state=active]:bg-purple-500/20 data-[state=active]:text-purple-300 px-3 py-1.5 text-xs"
+                >
+                  <History className="h-3 w-3 mr-1.5" />
+                  Memory Logs
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -405,6 +481,18 @@ function AgentDetailPanel({
                 </div>
               </TabsContent>
             ))}
+            
+            {/* Memory Logs Tab */}
+            <TabsContent
+              value="__memory_logs__"
+              className="flex-1 overflow-hidden flex flex-col m-0"
+            >
+              <div className="flex items-center justify-between px-6 py-2 border-b border-white/5">
+                <span className="text-xs text-white/40">Daily Memory Logs</span>
+                <span className="text-xs text-white/30">Source: Supabase memory_logs</span>
+              </div>
+              <MemoryLogsPanel agentId={agent.id} />
+            </TabsContent>
           </Tabs>
         )}
       </div>
