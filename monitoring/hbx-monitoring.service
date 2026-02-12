@@ -1,0 +1,14 @@
+[Unit]
+Description=HBx Platform Monitoring Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/.openclaw/workspace/monitoring/dashboard
+ExecStart=/usr/bin/python3 -m http.server 8090
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

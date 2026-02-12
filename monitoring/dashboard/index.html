@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="refresh" content="300">
+    <title>HBx Platform Monitoring</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0a0a0f 0%, #1a1a2e 100%);
+            color: #fff;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            font-size: 2rem;
+            background: linear-gradient(90deg, #a855f7, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 5px;
+        }
+        .header .subtitle {
+            color: #888;
+            font-size: 0.9rem;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .stat-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+        .stat-card .label {
+            color: #888;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        .stat-card .meta {
+            color: #666;
+            font-size: 0.75rem;
+            margin-top: 5px;
+        }
+        .stat-card.ok .value { color: #22c55e; }
+        .stat-card.warning .value { color: #eab308; }
+        .stat-card.critical .value { color: #ef4444; }
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 20px;
+        }
+        .chart-card {
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        .chart-card h3 {
+            color: #aaa;
+            font-size: 0.9rem;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .chart-container {
+            position: relative;
+            height: 250px;
+        }
+        .footer {
+            text-align: center;
+            color: #555;
+            font-size: 0.8rem;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+        @media (max-width: 600px) {
+            .charts-grid { grid-template-columns: 1fr; }
+            .stat-card .value { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🧠 HBx Platform Monitoring</h1>
+        <div class="subtitle">Auto-refreshes every 5 minutes</div>
+    </div>
+    
+    <div class="stats-grid">
+        <div class="stat-card ok">
+            <div class="label">CPU Usage</div>
+            <div class="value">0.0%</div>
+            <div class="meta">avg 3.5% · peak 4.5%</div>
+        </div>
+        <div class="stat-card ok">
+            <div class="label">Memory</div>
+            <div class="value">44.5%</div>
+            <div class="meta">avg 45% · peak 45.2%</div>
+        </div>
+        <div class="stat-card ok">
+            <div class="label">CPU Load</div>
+            <div class="value">41%</div>
+            <div class="meta">avg 74% · peak 117%</div>
+        </div>
+        <div class="stat-card ok">
+            <div class="label">Sessions</div>
+            <div class="value">0</div>
+            <div class="meta">avg 12 · peak 15</div>
+        </div>
+        <div class="stat-card ok">
+            <div class="label">Gateway Latency</div>
+            <div class="value">20ms</div>
+            <div class="meta">100% uptime</div>
+        </div>
+        <div class="stat-card ok">
+            <div class="label">Data Points</div>
+            <div class="value">5</div>
+            <div class="meta">since 2026-02-12</div>
+        </div>
+    </div>
+    
+    <div class="charts-grid">
+        <div class="chart-card">
+            <h3>📊 CPU Usage Over Time</h3>
+            <div class="chart-container">
+                <canvas id="cpuChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <h3>💾 Memory Usage Over Time</h3>
+            <div class="chart-container">
+                <canvas id="memChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <h3>⚡ CPU Load (% of capacity)</h3>
+            <div class="chart-container">
+                <canvas id="loadChart"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <h3>🔌 Active Sessions</h3>
+            <div class="chart-container">
+                <canvas id="sessionsChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="footer">
+        Last updated: 2026-02-12 03:16:25 UTC · Data from 2026-02-12T03:12:14Z to 2026-02-12T03:15:01Z
+    </div>
+
+    <script>
+        const chartConfig = {
+            type: 'line',
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { intersect: false, mode: 'index' },
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: { unit: 'hour', displayFormats: { hour: 'MMM d, HH:mm' } },
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#666', maxTicksLimit: 8 }
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255,255,255,0.05)' },
+                        ticks: { color: '#666' }
+                    }
+                }
+            }
+        };
+
+        // CPU Chart
+        new Chart(document.getElementById('cpuChart'), {
+            ...chartConfig,
+            data: {
+                datasets: [{
+                    data: [
+  {
+    "x": "2026-02-12T03:12:14Z",
+    "y": 4.3
+  },
+  {
+    "x": "2026-02-12T03:13:41Z",
+    "y": 4.3
+  },
+  {
+    "x": "2026-02-12T03:13:48Z",
+    "y": 4.5
+  },
+  {
+    "x": "2026-02-12T03:13:56Z",
+    "y": 4.5
+  },
+  {
+    "x": "2026-02-12T03:15:01Z",
+    "y": 0.0
+  }
+],
+                    borderColor: '#a855f7',
+                    backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0
+                }]
+            },
+            options: { ...chartConfig.options, scales: { ...chartConfig.options.scales, y: { ...chartConfig.options.scales.y, max: 100 } } }
+        });
+
+        // Memory Chart
+        new Chart(document.getElementById('memChart'), {
+            ...chartConfig,
+            data: {
+                datasets: [{
+                    data: [
+  {
+    "x": "2026-02-12T03:12:14Z",
+    "y": 45.1
+  },
+  {
+    "x": "2026-02-12T03:13:41Z",
+    "y": 45.2
+  },
+  {
+    "x": "2026-02-12T03:13:48Z",
+    "y": 45.2
+  },
+  {
+    "x": "2026-02-12T03:13:56Z",
+    "y": 45.1
+  },
+  {
+    "x": "2026-02-12T03:15:01Z",
+    "y": 44.5
+  }
+],
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0
+                }]
+            },
+            options: { ...chartConfig.options, scales: { ...chartConfig.options.scales, y: { ...chartConfig.options.scales.y, max: 100 } } }
+        });
+
+        // Load Chart
+        new Chart(document.getElementById('loadChart'), {
+            ...chartConfig,
+            data: {
+                datasets: [{
+                    data: [
+  {
+    "x": "2026-02-12T03:12:14Z",
+    "y": 48
+  },
+  {
+    "x": "2026-02-12T03:13:41Z",
+    "y": 68.5
+  },
+  {
+    "x": "2026-02-12T03:13:48Z",
+    "y": 96.5
+  },
+  {
+    "x": "2026-02-12T03:13:56Z",
+    "y": 116.5
+  },
+  {
+    "x": "2026-02-12T03:15:01Z",
+    "y": 41
+  }
+],
+                    borderColor: '#22c55e',
+                    backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                ...chartConfig.options,
+                plugins: {
+                    ...chartConfig.options.plugins,
+                    annotation: {
+                        annotations: {
+                            line1: { type: 'line', yMin: 100, yMax: 100, borderColor: '#ef4444', borderWidth: 2, borderDash: [5, 5] }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Sessions Chart
+        new Chart(document.getElementById('sessionsChart'), {
+            ...chartConfig,
+            data: {
+                datasets: [{
+                    data: [
+  {
+    "x": "2026-02-12T03:12:14Z",
+    "y": 15
+  },
+  {
+    "x": "2026-02-12T03:13:41Z",
+    "y": 15
+  },
+  {
+    "x": "2026-02-12T03:13:48Z",
+    "y": 15
+  },
+  {
+    "x": "2026-02-12T03:13:56Z",
+    "y": 15
+  },
+  {
+    "x": "2026-02-12T03:15:01Z",
+    "y": 0
+  }
+],
+                    borderColor: '#eab308',
+                    backgroundColor: 'rgba(234, 179, 8, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 0
+                }]
+            }
+        });
+    </script>
+</body>
+</html>

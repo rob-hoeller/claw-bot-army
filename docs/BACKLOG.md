@@ -2,62 +2,96 @@
 
 ## 🔮 Concepts / Discovery
 
-### Multi-Agent Fleet Management
-**Status:** Discovery  
-**Added:** 2025-02-12  
-**Owner:** TBD
-
-**Concept:**  
-Apply fleet management principles to the HBx multi-agent architecture. Central monitoring of costs, health, and activity across agents with scheduled reporting.
-
-**Existing Setup:**
-- HBx_IN1 — Product Architect (specs, prioritization)
-- HBx_IN2 — Code Factory (builds features)
-- HBx_IN3 — Research Lab (learning, research)
-- HBx_SP1 — Support (bug fixes)
-
-**Open Questions:**
-1. **Identity:** Who is the orchestrator?
-   - Is this instance HBx (the parent)?
-   - Or a separate Fleet Commander instance?
-
-2. **Deployment Model:** How are sub-agents deployed?
-   - Separate OpenClaw instances with own gateways?
-   - Spawned sessions via sessions_spawn?
-   - Conceptual roles not yet running?
-
-3. **Monitoring Scope:** What to track?
-   - Token costs across agents
-   - Health/uptime
-   - Work activity summaries
-   - Task routing
-
-4. **Stakeholders:** Who receives reports?
-   - Lance
-   - Others (Rob Lepard, Rob Hoeller)?
-
-**Next Steps:**
-- [ ] Answer open questions above
-- [ ] Define deployment architecture
-- [ ] Set up agent instances (if separate)
-- [ ] Configure monitoring/reporting
-
-**Reference:** Fleet Commander SOUL concept (shared in chat 2025-02-12)
+_Empty — all items moved to In Progress or Done_
 
 ---
 
 ## 📋 Planned
 
-_Nothing yet_
+### Security Policy Framework
+**Status:** Planned  
+**Added:** 2025-02-12  
+**Owner:** HBx
+
+**Concept:**  
+Establish security policy framework for multi-OpenClaw instance deployments. Integrate with healthcheck skill.
+
+**Next Steps:**
+- [ ] Run security audit on this instance (`openclaw security audit --deep`)
+- [ ] Define risk tolerance profile
+- [ ] Document security policies for fleet
 
 ---
 
 ## 🚧 In Progress
 
-_Nothing yet_
+### Multi-Agent Fleet Management
+**Status:** In Progress  
+**Added:** 2025-02-12  
+**Owner:** HBx (Fleet Commander)
+
+**Decisions Made:**
+1. ✅ **Identity:** This instance (HBx) is the Fleet Commander
+2. ✅ **Deployment Model:** Single EC2, multi-session via sessions_spawn
+3. ✅ **Monitoring Scope:** Token costs, health, activity — stored in Supabase
+4. ✅ **Stakeholders:** Lance, Rob Lepard, Rob Hoeller
+
+**Existing Agents:**
+| Agent ID | Name | Department | Status |
+|----------|------|------------|--------|
+| HBx | Fleet Commander | Platform | ✅ Active |
+| HBx_SL1 | Schellie | Sales | ✅ Active |
+| HBx_IN1 | Product Architect | Innovation | 🔄 Planned |
+| HBx_IN2 | Code Factory | Innovation | 🔄 Planned |
+| HBx_IN3 | Research Lab | Innovation | 🔄 Planned |
+| HBx_SP1 | Support | Support | 🔄 Planned |
+
+**Completed:**
+- [x] Confirm deployment architecture (single EC2, multi-session)
+- [x] Identify data sources (session JSONL files with full cost data)
+- [x] Design Supabase schema for token_usage tables
+- [x] Build collection script (collect-usage-db.sh)
+- [x] Build dashboard API (/api/usage)
+- [x] Build TokenUsagePage component
+
+**Remaining:**
+- [ ] **Run Supabase migration** (database/migrations/002_token_usage.sql)
+- [ ] Test collection script with live data
+- [ ] Add cron job for 15-minute collection
+- [ ] Deploy dashboard to Vercel
+- [ ] Configure alerts for cost thresholds
 
 ---
 
 ## ✅ Done
 
-_Nothing yet_
+### Infrastructure Monitoring (PR #25-27)
+**Completed:** 2025-02-12
+
+- Database-backed metrics collection (CPU, memory, load, sessions)
+- MonitoringPage dashboard component with charts
+- 15-minute collection via collect-metrics-db.sh
+- Scaling recommendations based on thresholds
+
+### Token Usage & Cost Tracking (Current Session)
+**Completed:** 2025-02-12
+
+**Files Created:**
+- `database/migrations/002_token_usage.sql` — Supabase schema
+- `monitoring/collect-usage-db.sh` — JSONL parser and collector
+- `dashboard/src/app/api/usage/route.ts` — API endpoint
+- `dashboard/src/components/TokenUsagePage.tsx` — Dashboard UI
+
+**Features:**
+- Per-session token snapshots every 15 minutes
+- Daily/weekly aggregates for trend analysis
+- Cost breakdown (input, output, cache read/write)
+- Drill-down by agent, user, model
+- Leaderboards (top agents, top users by cost)
+- Time range selector (7d, 14d, 30d, 90d)
+
+**Schema:**
+- `token_usage` — Granular snapshots
+- `token_usage_daily` — Daily rollups
+- `token_usage_weekly` — Weekly rollups with trend comparison
+- Views: `token_usage_today`, `token_usage_7d_by_agent`, `token_usage_7d_by_user`
