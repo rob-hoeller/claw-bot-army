@@ -426,10 +426,14 @@ const chatUsers = [
 
 // Map Supabase user to chat user ID by email
 function mapUserToChannelId(userEmail?: string, userMetadata?: Record<string, unknown>): string {
+  // Debug: log inputs
+  console.log('[AgentsPage] mapUserToChannelId called with:', { userEmail, userMetadata })
+  
   // 1. Check user_metadata.channel_id (override if set)
   if (userMetadata?.channel_id && typeof userMetadata.channel_id === 'string') {
     const channelId = userMetadata.channel_id.toLowerCase()
     if (chatUsers.find(u => u.id === channelId)) {
+      console.log('[AgentsPage] Matched by channel_id:', channelId)
       return channelId
     }
   }
@@ -437,8 +441,11 @@ function mapUserToChannelId(userEmail?: string, userMetadata?: Record<string, un
   // 2. Match by exact email (primary method)
   if (userEmail) {
     const emailLower = userEmail.toLowerCase()
+    console.log('[AgentsPage] Checking email:', emailLower)
+    console.log('[AgentsPage] Against chatUsers:', chatUsers.map(u => u.email.toLowerCase()))
     const match = chatUsers.find(u => u.email.toLowerCase() === emailLower)
     if (match) {
+      console.log('[AgentsPage] Matched user by email:', match.id)
       return match.id
     }
   }
