@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import CardSection from "@/components/CardSection"
 import PageHeader from "@/components/PageHeader"
+import PlatformMetrics from "@/components/PlatformMetrics"
 
 const stats = [
   {
@@ -128,6 +129,11 @@ export default function Dashboard() {
             </motion.div>
           )
         })}
+      </div>
+
+      {/* Platform Metrics */}
+      <div className="mb-8">
+        <PlatformMetrics />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

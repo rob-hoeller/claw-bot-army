@@ -12,6 +12,7 @@ import {
   Pencil,
   Save,
   FileText,
+  Loader2,
   Plus,
   Rocket,
   Globe,
@@ -128,7 +129,7 @@ function AgentCard({
       <p className={cn("font-semibold text-white", isRoot ? "text-lg" : "text-sm")}>
         {agent.id}
       </p>
-      <p className="text-xs text-white/50 mt-0.5 text-center">{agent.role}</p>
+      <p className="text-xs text-white/50 mt-0.5 text-center line-clamp-2">{agent.role}</p>
       <div className="flex items-center gap-2 mt-2">
         <Badge
           variant={agent.status === "active" ? "success" : "warning"}
@@ -278,7 +279,7 @@ function NewAgentPanel({ onClose }: { onClose: () => void }) {
         >
           {launching ? (
             <>
-              <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Launching...
             </>
           ) : (
@@ -300,16 +301,19 @@ function FilePanel({
   icon: Icon,
   files,
   onClose,
+  onSave,
 }: {
   title: string
   subtitle: string
   icon: React.ElementType
   files: AgentFile[]
   onClose: () => void
+  onSave: (fileName: string, content: string) => Promise<void>
 }) {
   const [activeFile, setActiveFile] = useState(files[0]?.name || "")
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState("")
+  const [saving, setSaving] = useState(false)
 
   const currentFile = files.find((f) => f.name === activeFile)
 
@@ -320,9 +324,22 @@ function FilePanel({
     }
   }
 
-  const handleSave = () => {
-    // TODO: Save to backend/filesystem
+  const handleSave = async () => {
+    if (!currentFile) return
+    setSaving(true)
+    try {
+      await onSave(currentFile.name, editContent)
+      setIsEditing(false)
+    } catch (err) {
+      console.error("Failed to save:", err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCancel = () => {
     setIsEditing(false)
+    setEditContent("")
   }
 
   return (
@@ -1071,6 +1088,9 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
     { name: "COMPANY", content: "# Company Overview\n\nGlobal knowledge base not yet implemented." },
   ]
 
+  const rootAgent = agentTree
+  const childAgents = agentTree.children ?? []
+
   return (
     <div className="flex h-[calc(100vh-4rem)]">
       {/* Main Content */}
@@ -1107,14 +1127,14 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
         {/* Root Agent (HBx) */}
         <div className="flex flex-col items-center">
           <AgentCard
-            agent={agentTree}
-            onClick={() => setSelectedAgent(agentTree)}
-            isSelected={selectedAgent?.id === agentTree.id}
+            agent={rootAgent}
+            onClick={() => setSelectedAgent(rootAgent)}
+            isSelected={selectedAgent?.id === rootAgent.id}
             isRoot
           />
 
           {/* Connector Line */}
-          {agentTree.children && agentTree.children.length > 0 && (
+          {childAgents.length > 0 && (
             <div className="flex flex-col items-center">
               <div className="w-px h-8 bg-white/10" />
               <ChevronDown className="h-4 w-4 text-white/20 -mt-1" />
@@ -1122,12 +1142,12 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
           )}
 
           {/* Child Agents */}
-          {agentTree.children && (
+          {childAgents.length > 0 && (
             <div className="flex flex-wrap justify-center gap-4 mt-2">
               {/* Horizontal connector */}
               <div className="absolute w-[calc(100%-200px)] max-w-xl h-px bg-white/10 -mt-6 left-1/2 -translate-x-1/2" />
               
-              {agentTree.children.map((child) => (
+              {childAgents.map((child) => (
                 <div key={child.id} className="flex flex-col items-center">
                   <div className="w-px h-4 bg-white/10 -mt-2 mb-2" />
                   <AgentCard
@@ -1146,6 +1166,13 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
             </div>
           )}
         </div>
+      </div>
+
+      {/* Data source indicator */}
+      <div className="mt-8 text-center">
+        <p className="text-white/20 text-xs">
+          Live data from Supabase • {1 + (agentTree.children?.length ?? 0)} agents
+        </p>
       </div>
 
       {/* Panels */}
@@ -1195,6 +1222,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
               icon={Globe}
               files={globalKnowledgeFiles}
               onClose={() => setShowGlobalKnowledge(false)}
+              onSave={async () => {}}
             />
           </>
         )}
