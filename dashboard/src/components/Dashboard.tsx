@@ -100,7 +100,7 @@ export default function Dashboard() {
   return (
     <div>
       <PageHeader
-        title="Dashboard"
+        title="Command Center"
         description="Overview of the HBx Agent Network"
       />
 
