@@ -1550,24 +1550,35 @@ function FilePanel({
   )
 }
 
-// User channel data (will come from Supabase later)
+// User channel data - maps to Supabase users by email
 const chatUsers = [
-  { id: 'lance', name: 'Lance Manlove', initials: 'LM', color: 'purple', email: 'lance@' },
-  { id: 'robl', name: 'Rob L', initials: 'RL', color: 'blue', email: 'robl@' },
-  { id: 'robh', name: 'Rob H', initials: 'RH', color: 'green', email: 'robh@' },
+  { id: 'lance', name: 'Lance Manlove', initials: 'LM', color: 'purple', email: 'lance@schellbrothers.com' },
+  { id: 'robl', name: 'Rob Lepard', initials: 'RL', color: 'blue', email: 'rob.lepard@schellbrothers.com' },
+  { id: 'robh', name: 'Rob Hoeller', initials: 'RH', color: 'green', email: 'rob@schellbrothers.com' },
 ]
 
-// Detect current user from various sources
-function useCurrentUser() {
-  // TODO: Get from Supabase auth session
-  // For now, check localStorage or default to first user
-  if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('hbx-current-user')
-    if (stored && chatUsers.find(u => u.id === stored)) {
-      return stored
+// Map Supabase user to chat user ID by email
+function mapUserToChannelId(userEmail?: string, userMetadata?: Record<string, unknown>): string {
+  // 1. Check user_metadata.channel_id (override if set)
+  if (userMetadata?.channel_id && typeof userMetadata.channel_id === 'string') {
+    const channelId = userMetadata.channel_id.toLowerCase()
+    if (chatUsers.find(u => u.id === channelId)) {
+      return channelId
     }
   }
-  return chatUsers[0].id // Default to Lance
+  
+  // 2. Match by exact email (primary method)
+  if (userEmail) {
+    const emailLower = userEmail.toLowerCase()
+    const match = chatUsers.find(u => u.email.toLowerCase() === emailLower)
+    if (match) {
+      return match.id
+    }
+  }
+  
+  // 3. Default to first user (Lance)
+  console.warn('[AgentsPage] Could not map user to channel, defaulting to lance:', { userEmail })
+  return chatUsers[0].id
 }
 
 // Agent Detail Panel - Full Page Modal with Chat, Files, Status, etc.
@@ -1899,13 +1910,19 @@ function AgentDetailPanel({
   )
 }
 
+// Props interface for AgentsPage
+interface AgentsPageProps {
+  userEmail?: string
+  userMetadata?: Record<string, unknown>
+}
+
 // Main Agents Page
-export default function AgentsPage() {
+export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps) {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showGlobalKnowledge, setShowGlobalKnowledge] = useState(false)
   const [showActivityFeed, setShowActivityFeed] = useState(true)
-  const currentUserId = useCurrentUser()
+  const currentUserId = mapUserToChannelId(userEmail, userMetadata)
 
   // Handle clicking on an activity item
   const handleActivityClick = (item: ActivityItemData) => {
