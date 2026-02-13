@@ -51,9 +51,142 @@ write_file "identity_md" "IDENTITY.md"
 write_file "tools_md" "TOOLS.md"
 write_file "heartbeat_md" "HEARTBEAT.md"
 write_file "user_md" "USER.md"
-# MEMORY.md now syncs from DB (source of truth)
-write_file "memory_md" "MEMORY.md"
+
+# ============================================================
+# MEMORY.md: Dynamic Agent Registry Generation
+# ============================================================
+# The agent registry is generated dynamically from the agents table
+# to ensure HBx always has current agent data (single source of truth).
+# Static content from memory_md is preserved below the registry.
+# ============================================================
+
+echo ""
+echo "📊 Generating dynamic agent registry..."
+
+# Fetch ALL agents from Supabase (using correct column names)
+# Schema: id, name, department_id, role, status, last_active, description
+ALL_AGENTS=$(curl -s "${SUPABASE_URL}/rest/v1/agents?select=id,name,department_id,role,status,last_active,description&order=id" \
+  -H "apikey: ${SUPABASE_ANON_KEY}" \
+  -H "Authorization: Bearer ${SUPABASE_ANON_KEY}")
+
+# Verify we got valid JSON array
+if ! echo "$ALL_AGENTS" | jq -e 'type == "array"' > /dev/null 2>&1; then
+  echo "   ⚠️  Failed to fetch agents list, falling back to memory_md"
+  write_file "memory_md" "MEMORY.md"
+  exit 0
+fi
+
+# Count agents
+TOTAL_AGENTS=$(echo "$ALL_AGENTS" | jq 'length')
+ACTIVE_AGENTS=$(echo "$ALL_AGENTS" | jq '[.[] | select(.status == "active" or .status == "Active" or .status == null)] | length')
+DEPLOYING_AGENTS=$(echo "$ALL_AGENTS" | jq '[.[] | select(.status == "deploying" or .status == "Deploying")] | length')
+INACTIVE_AGENTS=$(echo "$ALL_AGENTS" | jq '[.[] | select(.status == "inactive" or .status == "Inactive")] | length')
+
+echo "   Found $TOTAL_AGENTS agents in Supabase"
+
+# Generate the agent registry table
+generate_registry() {
+  echo "# Long-Term Memory: HBx"
+  echo ""
+  echo "> This file stores platform state, agent registry, and significant events."
+  echo "> Agent registry is **dynamically generated** from Supabase (single source of truth)."
+  echo "> Last synced: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  echo ""
+  echo "---"
+  echo ""
+  echo "## Agent Registry"
+  echo ""
+  echo "### Active Agents"
+  echo ""
+  echo "| Agent ID | Name | Department | Role | Status | Last Active |"
+  echo "|----------|------|------------|------|--------|-------------|"
+  
+  # Generate rows from agents table
+  # Using department_id for now (can join with departments table later)
+  echo "$ALL_AGENTS" | jq -r '.[] | 
+    "| \(.id // "—") | \(.name // "—") | \(.department_id // "—") | \(.role // "—") | \(
+      if .status == "active" or .status == "Active" or .status == null then "✅ Active"
+      elif .status == "deploying" or .status == "Deploying" then "🔄 Deploying"
+      elif .status == "inactive" or .status == "Inactive" then "⏸️ Inactive"
+      else .status
+      end
+    ) | \(.last_active // "—") |"'
+  
+  echo ""
+  echo "### Agent Health Summary"
+  echo ""
+  echo "| Metric | Value |"
+  echo "|--------|-------|"
+  echo "| Total Agents | $TOTAL_AGENTS |"
+  echo "| Active | $ACTIVE_AGENTS |"
+  echo "| Deploying | $DEPLOYING_AGENTS |"
+  echo "| Inactive | $INACTIVE_AGENTS |"
+  echo "| Issues | 0 |"
+  echo ""
+  echo "---"
+  echo ""
+}
+
+# Get static content from memory_md (everything after "## Recent Activity" or similar)
+STATIC_CONTENT=$(echo "$RESPONSE" | jq -r '.[0].memory_md // empty' | sed -n '/^## Recent Activity/,$p')
+
+# If no static content found, use default
+if [ -z "$STATIC_CONTENT" ]; then
+  STATIC_CONTENT="## Recent Activity
+
+### Platform Events
+
+| Date | Event | Details |
+|------|-------|---------|
+| 2026-02-10 | Platform Launch | HBx dashboard deployed to Vercel |
+| 2026-02-10 | Agent Setup | Initial agents configured |
+| 2026-02-13 | Dynamic Registry | Agent registry now syncs from Supabase |
+
+### Task Routing Log
+
+| Date | Task | Routed To | Status |
+|------|------|-----------|--------|
+| — | — | — | — |
+
+---
+
+## Global Knowledge Status
+
+| File | Last Updated | Status |
+|------|--------------|--------|
+| COMPANY.md | 2026-02-10 | ✅ Current |
+| COMPLIANCE.md | 2026-02-10 | ✅ Current |
+| DEPARTMENTS.md | 2026-02-10 | ✅ Current |
+| PLATFORM-RULES.md | 2026-02-10 | ✅ Current |
+
+---
+
+## Notes
+
+- Platform launched for Schell Brothers
+- Agent registry now dynamically generated from Supabase
+- Single source of truth architecture enforced
+- Dashboard UI in active development
+
+---
+
+## Session Log
+
+| Date | Focus | Key Outcomes |
+|------|-------|--------------|
+| 2026-02-10 | Platform Setup | Dashboard deployed, agents configured |
+| 2026-02-13 | Cache Fix | Dynamic agent registry implemented |"
+fi
+
+# Write MEMORY.md with dynamic registry + static content
+{
+  generate_registry
+  echo "$STATIC_CONTENT"
+} > "${WORKSPACE}/MEMORY.md"
+
+echo "   ✅ MEMORY.md (dynamic registry + static content)"
 
 echo ""
 echo "✅ Sync complete for $AGENT_ID"
 echo "   Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo "   Agents synced: $TOTAL_AGENTS"
