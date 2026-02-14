@@ -4,6 +4,7 @@ import { useState } from "react"
 import { User } from "@supabase/supabase-js"
 import Header from "./Header"
 import Sidebar from "./Sidebar"
+// useAgents moved to SyncStatus component for isolation
 
 interface AppShellProps {
   user: User
@@ -24,6 +25,7 @@ export default function AppShell({
 }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  // Sync status is now self-contained in SyncStatus component
 
   return (
     <div className="min-h-screen bg-black">
