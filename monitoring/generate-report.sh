@@ -21,35 +21,36 @@ fi
 SAMPLE_COUNT=$(wc -l < "$METRICS_FILE")
 
 # Calculate averages and peaks using jq
+# Note: Metrics use flat keys (cpu_percent, gateway_status, etc.)
 STATS=$(cat "$METRICS_FILE" | jq -s '
 {
   samples: length,
   cpu: {
-    avg: ([.[].system.cpu_percent] | add / length | . * 10 | round / 10),
-    max: ([.[].system.cpu_percent] | max),
-    min: ([.[].system.cpu_percent] | min)
+    avg: ([.[].cpu_percent] | add / length | . * 10 | round / 10),
+    max: ([.[].cpu_percent] | max),
+    min: ([.[].cpu_percent] | min)
   },
   mem: {
-    avg_percent: ([.[].system.mem_percent] | add / length | . * 10 | round / 10),
-    max_percent: ([.[].system.mem_percent] | max),
-    avg_used_gb: ([.[].system.mem_used] | add / length / 1073741824 | . * 10 | round / 10)
+    avg_percent: ([.[].mem_percent] | add / length | . * 10 | round / 10),
+    max_percent: ([.[].mem_percent] | max),
+    avg_used_gb: ([.[].mem_used_bytes] | add / length / 1073741824 | . * 10 | round / 10)
   },
   load: {
-    avg_1m: ([.[].system.load_1m] | add / length | . * 100 | round / 100),
-    max_1m: ([.[].system.load_1m] | max),
-    cpu_count: (.[0].system.cpu_count // 2)
+    avg_1m: ([.[].load_1m] | add / length | . * 100 | round / 100),
+    max_1m: ([.[].load_1m] | max),
+    cpu_count: (.[0].cpu_count // 2)
   },
   gateway: {
-    uptime_percent: (([.[].gateway.status] | map(select(. == "ok")) | length) / length * 100 | round),
-    avg_latency_ms: ([.[].gateway.latency_ms] | add / length | round),
-    max_sessions: ([.[].gateway.sessions] | max),
-    avg_sessions: ([.[].gateway.sessions] | add / length | . * 10 | round / 10)
+    uptime_percent: (([.[].gateway_status] | map(select(. == "ok")) | length) / length * 100 | round),
+    avg_latency_ms: ([.[].gateway_latency_ms] | add / length | round),
+    max_sessions: ([.[].session_count] | max),
+    avg_sessions: ([.[].session_count] | add / length | . * 10 | round / 10)
   },
   disk: {
-    percent: (.[0].system.disk_percent // 0)
+    percent: (.[0].disk_percent // 0)
   },
-  first_ts: .[0].ts,
-  last_ts: .[-1].ts
+  first_ts: .[0].recorded_at,
+  last_ts: .[-1].recorded_at
 }
 ')
 
