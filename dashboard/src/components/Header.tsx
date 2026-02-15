@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
+import SyncStatus from "@/components/SyncStatus"
 
 interface HeaderProps {
   user: User
@@ -52,6 +53,9 @@ export default function Header({ user, onSignOut, onSettingsClick, onMenuClick }
             <span className="text-xs text-white/30 font-medium">
               v1.0.0
             </span>
+          </div>
+          <div className="hidden sm:block">
+            <SyncStatus />
           </div>
         </div>
 

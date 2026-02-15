@@ -57,10 +57,21 @@ export function useAgents() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [lastSynced, setLastSynced] = useState<Date | null>(null)
 
   const fetchAgents = useCallback(async () => {
+    // Defensive: ensure supabase is available
     if (!supabase) {
+      console.warn("useAgents: Supabase not configured")
       setError("Supabase not configured")
+      setLoading(false)
+      return
+    }
+    
+    // Extra safety check
+    if (typeof supabase.from !== 'function') {
+      console.error("useAgents: Invalid supabase client")
+      setError("Invalid supabase client")
       setLoading(false)
       return
     }
@@ -105,6 +116,7 @@ export function useAgents() {
 
       setAgents(parsed)
       setError(null)
+      setLastSynced(new Date())
     } catch (err) {
       console.error("Failed to fetch agents:", err)
       setError(err instanceof Error ? err.message : "Failed to fetch agents")
@@ -114,7 +126,12 @@ export function useAgents() {
   }, [])
 
   useEffect(() => {
-    fetchAgents()
+    try {
+      fetchAgents()
+    } catch (err) {
+      console.error("useAgents useEffect error:", err)
+      setLoading(false)
+    }
   }, [fetchAgents])
 
   const updateAgentFile = useCallback(
@@ -155,6 +172,7 @@ export function useAgents() {
     agents,
     loading,
     error,
+    lastSynced,
     refresh: fetchAgents,
     updateAgentFile,
   }
