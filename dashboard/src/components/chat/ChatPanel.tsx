@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion } from "framer-motion"
-import { Bot, Loader2, Wifi, WifiOff } from "lucide-react"
+import { Bot, Loader2, Wifi, WifiOff, RefreshCw } from "lucide-react"
 import { MessageBubble } from "./MessageBubble"
 import { ChatInput } from "./ChatInput"
 import { Message, Attachment, Conversation } from "./types"
@@ -14,6 +14,8 @@ interface ChatPanelProps {
   agentEmoji?: string
   userId?: string
   isReadOnly?: boolean
+  /** If true, fetches history from OpenClaw on load instead of just Supabase */
+  syncFromGateway?: boolean
 }
 
 export function ChatPanel({ 
@@ -21,7 +23,8 @@ export function ChatPanel({
   agentName, 
   agentEmoji,
   userId,
-  isReadOnly = false
+  isReadOnly = false,
+  syncFromGateway = false
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [conversation, setConversation] = useState<Conversation | null>(null)
@@ -31,8 +34,12 @@ export function ChatPanel({
   const [streamingContent, setStreamingContent] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [gatewayConnected, setGatewayConnected] = useState<boolean | null>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Generate a stable session key for OpenClaw
+  const openclawSessionKey = `dashboard-${agentId}-${userId || 'anon'}`
 
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
@@ -51,6 +58,41 @@ export function ChatPanel({
 
   // Demo mode: no Supabase, no userId, or placeholder userId
   const isDemoMode = !supabase || !userId || !isValidUUID(userId)
+
+  // Fetch history from OpenClaw Gateway
+  const fetchGatewayHistory = useCallback(async () => {
+    try {
+      const response = await fetch(`/api/chat/history?sessionKey=${encodeURIComponent(openclawSessionKey)}&limit=50`)
+      if (!response.ok) return null
+      const data = await response.json()
+      return data.messages || []
+    } catch (err) {
+      console.error('Failed to fetch gateway history:', err)
+      return null
+    }
+  }, [openclawSessionKey])
+
+  // Sync messages from OpenClaw to Supabase
+  const syncFromOpenClaw = useCallback(async () => {
+    if (isDemoMode || !conversation) return
+    
+    setIsSyncing(true)
+    try {
+      const gatewayMessages = await fetchGatewayHistory()
+      if (gatewayMessages && gatewayMessages.length > 0) {
+        // Merge gateway messages with local messages
+        // This is a simple approach - you might want more sophisticated merging
+        const existingIds = new Set(messages.map(m => m.id))
+        const newMessages = gatewayMessages.filter((m: Message) => !existingIds.has(m.id))
+        
+        if (newMessages.length > 0) {
+          setMessages(prev => [...prev, ...newMessages])
+        }
+      }
+    } finally {
+      setIsSyncing(false)
+    }
+  }, [isDemoMode, conversation, fetchGatewayHistory, messages])
 
   // Check gateway connection on mount
   useEffect(() => {
@@ -127,7 +169,7 @@ export function ChatPanel({
 
         setConversation(conv)
 
-        // Load messages
+        // Load messages from Supabase first
         const { data: msgs, error: msgsError } = await sb
           .from('messages')
           .select('*')
@@ -138,6 +180,29 @@ export function ChatPanel({
 
         if (msgs && msgs.length > 0) {
           setMessages(msgs)
+        } else if (syncFromGateway && gatewayConnected) {
+          // If no local messages but sync enabled, try to fetch from OpenClaw
+          const gatewayMessages = await fetchGatewayHistory()
+          if (gatewayMessages && gatewayMessages.length > 0) {
+            // Convert to our message format with conversation_id
+            const convertedMessages = gatewayMessages.map((m: { id: string; role: string; content: string; created_at: string }) => ({
+              ...m,
+              conversation_id: conv.id,
+              attachments: [],
+            }))
+            setMessages(convertedMessages)
+          } else {
+            // Add welcome message for new conversations
+            const welcomeMsg: Message = {
+              id: 'welcome',
+              conversation_id: conv.id,
+              role: 'assistant',
+              content: `Hello! I'm ${agentName}. How can I help you today?`,
+              attachments: [],
+              created_at: new Date().toISOString()
+            }
+            setMessages([welcomeMsg])
+          }
         } else {
           // Add welcome message for new conversations
           const welcomeMsg: Message = {
@@ -159,7 +224,7 @@ export function ChatPanel({
     }
 
     initConversation()
-  }, [agentId, agentName, userId, isDemoMode, gatewayConnected])
+  }, [agentId, agentName, userId, isDemoMode, gatewayConnected, syncFromGateway, fetchGatewayHistory])
 
   // Parse SSE stream from OpenClaw gateway
   const parseSSEStream = async (
@@ -207,9 +272,22 @@ export function ChatPanel({
     }
   }
 
+  // Build history for API call (excludes welcome message and temp messages)
+  const buildHistoryForAPI = useCallback(() => {
+    return messages
+      .filter(m => !m.id.startsWith('temp-') && m.id !== 'welcome')
+      .map(m => ({
+        role: m.role,
+        content: m.content,
+      }))
+  }, [messages])
+
   // Send message to OpenClaw gateway
   const sendToGateway = async (content: string): Promise<string> => {
     abortControllerRef.current = new AbortController()
+
+    // Include conversation history for context
+    const history = buildHistoryForAPI()
 
     const response = await fetch('/api/chat/send', {
       method: 'POST',
@@ -217,7 +295,8 @@ export function ChatPanel({
       body: JSON.stringify({
         message: content,
         agentId,
-        sessionKey: conversation?.id || `dashboard-${agentId}-${userId || 'anon'}`,
+        sessionKey: openclawSessionKey,
+        history, // Send full history for context
         stream: true,
       }),
       signal: abortControllerRef.current.signal,
@@ -377,21 +456,38 @@ export function ChatPanel({
   return (
     <div className="flex flex-col h-full">
       {/* Connection Status */}
-      <div className="flex items-center justify-end px-4 py-1 border-b border-white/5">
-        <div className="flex items-center gap-1.5 text-xs">
-          {gatewayConnected === null ? (
-            <span className="text-white/30">Checking gateway...</span>
-          ) : gatewayConnected ? (
-            <>
-              <Wifi className="h-3 w-3 text-green-400" />
-              <span className="text-green-400/70">Gateway connected</span>
-            </>
-          ) : (
-            <>
-              <WifiOff className="h-3 w-3 text-yellow-400" />
-              <span className="text-yellow-400/70">Demo mode</span>
-            </>
+      <div className="flex items-center justify-between px-4 py-1 border-b border-white/5">
+        <div className="text-xs text-white/30 truncate">
+          Session: {openclawSessionKey}
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Sync button */}
+          {gatewayConnected && !isDemoMode && (
+            <button
+              onClick={syncFromOpenClaw}
+              disabled={isSyncing}
+              className="flex items-center gap-1 text-xs text-white/50 hover:text-white/70 disabled:opacity-50"
+              title="Sync from OpenClaw"
+            >
+              <RefreshCw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
+            </button>
           )}
+          {/* Gateway status */}
+          <div className="flex items-center gap-1.5 text-xs">
+            {gatewayConnected === null ? (
+              <span className="text-white/30">Checking gateway...</span>
+            ) : gatewayConnected ? (
+              <>
+                <Wifi className="h-3 w-3 text-green-400" />
+                <span className="text-green-400/70">Connected</span>
+              </>
+            ) : (
+              <>
+                <WifiOff className="h-3 w-3 text-yellow-400" />
+                <span className="text-yellow-400/70">Demo mode</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

@@ -6,11 +6,14 @@ import { NextRequest, NextResponse } from 'next/server'
  * Forwards messages to OpenClaw Gateway's Chat Completions API.
  * Supports streaming responses via SSE.
  * 
+ * UPDATED: Now accepts full conversation history for context.
+ * 
  * Request body:
  * {
- *   message: string,
+ *   message: string,           // The new user message
  *   agentId: string,
  *   sessionKey?: string,
+ *   history?: Array<{ role: 'user' | 'assistant', content: string }>,  // Prior messages for context
  *   stream?: boolean
  * }
  */
@@ -18,10 +21,15 @@ import { NextRequest, NextResponse } from 'next/server'
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
 
+interface ChatMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { message, agentId, sessionKey, stream = true } = body
+    const { message, agentId, sessionKey, history = [], stream = true } = body
 
     if (!message || !agentId) {
       return NextResponse.json(
@@ -37,6 +45,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Build messages array with history + new message
+    const messages: ChatMessage[] = [
+      // Include prior conversation history (last N messages)
+      ...history.slice(-20).map((msg: { role: string; content: string }) => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      })),
+      // Add the new user message
+      { role: 'user' as const, content: message },
+    ]
+
     // Build request to OpenClaw Gateway
     const gatewayResponse = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
       method: 'POST',
@@ -48,7 +67,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         model: `openclaw:${agentId}`,
-        messages: [{ role: 'user', content: message }],
+        messages,
         stream,
       }),
     })

@@ -16,6 +16,7 @@ import {
   Bug,
   Activity,
   Coins,
+  Network,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -30,6 +31,7 @@ interface SidebarProps {
 
 const navItems = [
   { id: "dashboard", label: "Command Center", icon: LayoutDashboard },
+  { id: "network", label: "Agent Network", icon: Network },
   { id: "agents", label: "Agents", icon: Bot },
   { id: "monitoring", label: "Monitoring", icon: Activity },
   { id: "usage", label: "Usage & Costs", icon: Coins },

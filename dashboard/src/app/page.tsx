@@ -13,6 +13,7 @@ import AppShell from "@/components/AppShell"
 import { FeatureBoard } from "@/components/features"
 import { MonitoringPage } from "@/components/MonitoringPage"
 import { TokenUsagePage } from "@/components/TokenUsagePage"
+import { OrchestratorPanel } from "@/components/orchestrator"
 import { Loader2 } from "lucide-react"
 
 // Placeholder pages for navigation
@@ -142,6 +143,12 @@ export default function Home() {
     switch (currentPage) {
       case "dashboard":
         return <Dashboard />
+      case "network":
+        return (
+          <div className="h-[calc(100vh-8rem)]">
+            <OrchestratorPanel className="h-full" />
+          </div>
+        )
       case "agents":
         return <AgentsPage userEmail={user?.email} userMetadata={user?.user_metadata} />
       case "features":
