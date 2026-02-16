@@ -12,7 +12,10 @@ interface ChatPanelProps {
   agentId: string
   agentName: string
   agentEmoji?: string
+  /** Supabase auth user UUID — used for DB persistence */
   userId?: string
+  /** Short session user ID (e.g. 'lance') — used for OpenClaw session key */
+  sessionUserId?: string
   isReadOnly?: boolean
   /** If true, fetches history from OpenClaw on load instead of just Supabase */
   syncFromGateway?: boolean
@@ -23,6 +26,7 @@ export function ChatPanel({
   agentName, 
   agentEmoji,
   userId,
+  sessionUserId,
   isReadOnly = false,
   syncFromGateway = false
 }: ChatPanelProps) {
@@ -39,7 +43,7 @@ export function ChatPanel({
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Generate a stable session key for OpenClaw
-  const openclawSessionKey = `dashboard-${agentId}-${userId || 'anon'}`
+  const openclawSessionKey = `dashboard-${agentId}-${sessionUserId || userId || 'anon'}`
 
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {

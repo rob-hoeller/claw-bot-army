@@ -150,7 +150,7 @@ export default function Home() {
           </div>
         )
       case "agents":
-        return <AgentsPage userEmail={user?.email} userMetadata={user?.user_metadata} />
+        return <AgentsPage userEmail={user?.email} userMetadata={user?.user_metadata} supabaseUserId={user?.id} />
       case "features":
         return <FeatureBoard />
       case "monitoring":
