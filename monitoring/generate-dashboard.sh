@@ -1,76 +1,148 @@
 #!/bin/bash
-# HBx Platform Monitoring - Dashboard Generator
+# HBx Platform Monitoring - Dashboard Generator (Optimized)
 # Creates an HTML dashboard with charts from collected metrics
+# Optimized: Single jq pass, skip if no new data
 
 set -e
 
 METRICS_DIR="/home/ubuntu/.openclaw/workspace/monitoring/logs"
 OUTPUT_DIR="/home/ubuntu/.openclaw/workspace/monitoring/dashboard"
 OUTPUT_FILE="$OUTPUT_DIR/index.html"
+LAST_RUN_FILE="$OUTPUT_DIR/.last_run"
 
 mkdir -p "$OUTPUT_DIR"
 
-# Collect last 7 days of metrics
-METRICS_DATA="[]"
+# =============================================================================
+# SKIP CHECK: Only regenerate if metrics files have changed
+# =============================================================================
+NEWEST_METRIC=$(find "$METRICS_DIR" -name "metrics-*.jsonl" -type f -printf '%T@\n' 2>/dev/null | sort -n | tail -1)
+if [ -f "$LAST_RUN_FILE" ] && [ -f "$OUTPUT_FILE" ]; then
+    LAST_RUN=$(cat "$LAST_RUN_FILE")
+    if [ "$NEWEST_METRIC" = "$LAST_RUN" ]; then
+        echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] No new metrics data, skipping dashboard generation"
+        exit 0
+    fi
+fi
+
+# =============================================================================
+# COLLECT DATA: Stream all metrics files directly to jq
+# =============================================================================
+METRICS_FILES=""
 for i in {6..0}; do
     DATE=$(date -u -d "$i days ago" +"%Y-%m-%d")
     FILE="$METRICS_DIR/metrics-$DATE.jsonl"
-    if [ -f "$FILE" ]; then
-        DAY_DATA=$(cat "$FILE" | jq -s '.')
-        METRICS_DATA=$(echo "$METRICS_DATA" | jq --argjson new "$DAY_DATA" '. + $new')
-    fi
+    [ -f "$FILE" ] && METRICS_FILES="$METRICS_FILES $FILE"
 done
 
-# Calculate stats for the page
-TOTAL_SAMPLES=$(echo "$METRICS_DATA" | jq 'length')
-if [ "$TOTAL_SAMPLES" -eq 0 ]; then
+if [ -z "$METRICS_FILES" ]; then
     echo "No metrics data found"
     exit 1
 fi
 
-LATEST=$(echo "$METRICS_DATA" | jq '.[-1]')
-FIRST_TS=$(echo "$METRICS_DATA" | jq -r '.[0].ts')
-LAST_TS=$(echo "$METRICS_DATA" | jq -r '.[-1].ts')
+# =============================================================================
+# SINGLE JQ PASS: Process all data at once
+# =============================================================================
+PROCESSED=$(cat $METRICS_FILES | jq -s '
+  # Input is array of all metrics
+  . as $data |
+  
+  # Calculate stats
+  ($data | length) as $total |
+  ($data | first) as $first |
+  ($data | last) as $latest |
+  
+  # CPU stats
+  ([$data[].cpu_percent // 0] | add / length | . * 10 | round / 10) as $cpu_avg |
+  ([$data[].cpu_percent // 0] | max) as $cpu_max |
+  
+  # Memory stats
+  ([$data[].mem_percent // 0] | add / length | . * 10 | round / 10) as $mem_avg |
+  ([$data[].mem_percent // 0] | max) as $mem_max |
+  
+  # Load stats (normalized to CPU count)
+  ([$data[] | (.load_1m // 0) / ((.cpu_count // 1) | if . == 0 then 1 else . end) * 100] | add / length | round) as $load_avg |
+  ([$data[] | (.load_1m // 0) / ((.cpu_count // 1) | if . == 0 then 1 else . end) * 100] | max | round) as $load_max |
+  
+  # Session stats
+  ([$data[].session_count // 0] | add / length | . * 10 | round / 10) as $sessions_avg |
+  ([$data[].session_count // 0] | max) as $sessions_max |
+  
+  # Latency and uptime
+  ([$data[].gateway_latency_ms // 0] | add / length | round) as $latency_avg |
+  (([$data[].gateway_status] | map(select(. == "ok")) | length) / $total * 100 | round) as $uptime_pct |
+  
+  # Current values from latest
+  ($latest.cpu_percent // 0) as $current_cpu |
+  ($latest.mem_percent // 0) as $current_mem |
+  (($latest.load_1m // 0) / (($latest.cpu_count // 1) | if . == 0 then 1 else . end) * 100 | round) as $current_load |
+  ($latest.session_count // 0) as $current_sessions |
+  
+  # Chart data arrays
+  [$data[] | {x: .recorded_at, y: (.cpu_percent // 0)}] as $cpu_data |
+  [$data[] | {x: .recorded_at, y: (.mem_percent // 0)}] as $mem_data |
+  [$data[] | {x: .recorded_at, y: ((.load_1m // 0) / ((.cpu_count // 1) | if . == 0 then 1 else . end) * 100)}] as $load_data |
+  [$data[] | {x: .recorded_at, y: (.session_count // 0)}] as $sessions_data |
+  
+  # Output everything in one object
+  {
+    total: $total,
+    first_ts: $first.recorded_at,
+    last_ts: $latest.recorded_at,
+    
+    cpu_avg: $cpu_avg,
+    cpu_max: $cpu_max,
+    mem_avg: $mem_avg,
+    mem_max: $mem_max,
+    load_avg: $load_avg,
+    load_max: $load_max,
+    sessions_avg: $sessions_avg,
+    sessions_max: $sessions_max,
+    latency_avg: $latency_avg,
+    uptime_pct: $uptime_pct,
+    
+    current_cpu: $current_cpu,
+    current_mem: $current_mem,
+    current_load: $current_load,
+    current_sessions: $current_sessions,
+    
+    cpu_data: $cpu_data,
+    mem_data: $mem_data,
+    load_data: $load_data,
+    sessions_data: $sessions_data
+  }
+')
 
-# Generate chart data arrays
-CPU_DATA=$(echo "$METRICS_DATA" | jq '[.[] | {x: .ts, y: .system.cpu_percent}]')
-MEM_DATA=$(echo "$METRICS_DATA" | jq '[.[] | {x: .ts, y: .system.mem_percent}]')
-LOAD_DATA=$(echo "$METRICS_DATA" | jq '[.[] | {x: .ts, y: (.system.load_1m / .system.cpu_count * 100)}]')
-SESSIONS_DATA=$(echo "$METRICS_DATA" | jq '[.[] | {x: .ts, y: .gateway.sessions}]')
-LATENCY_DATA=$(echo "$METRICS_DATA" | jq '[.[] | {x: .ts, y: .gateway.latency_ms}]')
+# =============================================================================
+# EXTRACT VALUES (fast - just reading from already-processed JSON)
+# =============================================================================
+TOTAL_SAMPLES=$(echo "$PROCESSED" | jq -r '.total')
+FIRST_TS=$(echo "$PROCESSED" | jq -r '.first_ts')
+LAST_TS=$(echo "$PROCESSED" | jq -r '.last_ts')
 
-# Calculate averages and peaks
-STATS=$(echo "$METRICS_DATA" | jq '{
-  cpu_avg: ([.[].system.cpu_percent] | add / length | . * 10 | round / 10),
-  cpu_max: ([.[].system.cpu_percent] | max),
-  mem_avg: ([.[].system.mem_percent] | add / length | . * 10 | round / 10),
-  mem_max: ([.[].system.mem_percent] | max),
-  load_avg: ([.[] | .system.load_1m / .system.cpu_count * 100] | add / length | round),
-  load_max: ([.[] | .system.load_1m / .system.cpu_count * 100] | max | round),
-  sessions_avg: ([.[].gateway.sessions] | add / length | . * 10 | round / 10),
-  sessions_max: ([.[].gateway.sessions] | max),
-  latency_avg: ([.[].gateway.latency_ms] | add / length | round),
-  uptime_pct: (([.[].gateway.status] | map(select(. == "ok")) | length) / length * 100 | round)
-}')
+CPU_AVG=$(echo "$PROCESSED" | jq -r '.cpu_avg')
+CPU_MAX=$(echo "$PROCESSED" | jq -r '.cpu_max')
+MEM_AVG=$(echo "$PROCESSED" | jq -r '.mem_avg')
+MEM_MAX=$(echo "$PROCESSED" | jq -r '.mem_max')
+LOAD_AVG=$(echo "$PROCESSED" | jq -r '.load_avg')
+LOAD_MAX=$(echo "$PROCESSED" | jq -r '.load_max')
+SESSIONS_AVG=$(echo "$PROCESSED" | jq -r '.sessions_avg')
+SESSIONS_MAX=$(echo "$PROCESSED" | jq -r '.sessions_max')
+LATENCY_AVG=$(echo "$PROCESSED" | jq -r '.latency_avg')
+UPTIME_PCT=$(echo "$PROCESSED" | jq -r '.uptime_pct')
 
-CPU_AVG=$(echo "$STATS" | jq -r '.cpu_avg')
-CPU_MAX=$(echo "$STATS" | jq -r '.cpu_max')
-MEM_AVG=$(echo "$STATS" | jq -r '.mem_avg')
-MEM_MAX=$(echo "$STATS" | jq -r '.mem_max')
-LOAD_AVG=$(echo "$STATS" | jq -r '.load_avg')
-LOAD_MAX=$(echo "$STATS" | jq -r '.load_max')
-SESSIONS_AVG=$(echo "$STATS" | jq -r '.sessions_avg')
-SESSIONS_MAX=$(echo "$STATS" | jq -r '.sessions_max')
-LATENCY_AVG=$(echo "$STATS" | jq -r '.latency_avg')
-UPTIME_PCT=$(echo "$STATS" | jq -r '.uptime_pct')
+CURRENT_CPU=$(echo "$PROCESSED" | jq -r '.current_cpu')
+CURRENT_MEM=$(echo "$PROCESSED" | jq -r '.current_mem')
+CURRENT_LOAD=$(echo "$PROCESSED" | jq -r '.current_load')
+CURRENT_SESSIONS=$(echo "$PROCESSED" | jq -r '.current_sessions')
 
-# Current values
-CURRENT_CPU=$(echo "$LATEST" | jq -r '.system.cpu_percent')
-CURRENT_MEM=$(echo "$LATEST" | jq -r '.system.mem_percent')
-CURRENT_LOAD=$(echo "$LATEST" | jq -r '(.system.load_1m / .system.cpu_count * 100) | round')
-CURRENT_SESSIONS=$(echo "$LATEST" | jq -r '.gateway.sessions')
+CPU_DATA=$(echo "$PROCESSED" | jq -c '.cpu_data')
+MEM_DATA=$(echo "$PROCESSED" | jq -c '.mem_data')
+LOAD_DATA=$(echo "$PROCESSED" | jq -c '.load_data')
+SESSIONS_DATA=$(echo "$PROCESSED" | jq -c '.sessions_data')
 
-# Generate HTML
+# =============================================================================
+# GENERATE HTML
+# =============================================================================
 cat > "$OUTPUT_FILE" << 'HTMLHEAD'
 <!DOCTYPE html>
 <html lang="en">
@@ -360,6 +432,7 @@ cat >> "$OUTPUT_FILE" << EOF
 </html>
 EOF
 
-echo "Dashboard generated: $OUTPUT_FILE"
-echo "View at: file://$OUTPUT_FILE"
-echo "Or serve with: python3 -m http.server 8080 -d $OUTPUT_DIR"
+# Save last run timestamp for skip check
+echo "$NEWEST_METRIC" > "$LAST_RUN_FILE"
+
+echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Dashboard generated: $OUTPUT_FILE ($TOTAL_SAMPLES samples)"

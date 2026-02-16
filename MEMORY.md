@@ -1,8 +1,8 @@
-MEMORY.md
 # Long-Term Memory: HBx
 
 > This file stores platform state, agent registry, and significant events.
-> Updated during heartbeats and after important sessions.
+> Agent registry is **dynamically generated** from Supabase (single source of truth).
+> Last synced: 2026-02-16T15:26:16Z
 
 ---
 
@@ -12,18 +12,23 @@ MEMORY.md
 
 | Agent ID | Name | Department | Role | Status | Last Active |
 |----------|------|------------|------|--------|-------------|
-| HBx | HBx | Platform | Master Orchestrator | ✅ Active | Now |
-| HBx_SL1 | Schellie | Sales | Digital Online Sales Counselor | ✅ Active | Today |
-| HBx_SL2 | Competitive Intel | Sales | Market Intelligence Agent | 🔄 Deploying | — |
-| HBx_SK1 | Skill Builder | Platform | Agent Designer & Skill Creator | 🔄 Deploying | — |
+| HBx | HBx | c726957c-9d6c-4b19-80c6-3f7a2f45adcf | Platform Director | ✅ Active | — |
+| HBx_IN1 | Product Architect | 43f4e892-f114-419c-8099-219f8c118b78 | Product Architect | 🔄 Deploying | — |
+| HBx_IN2 | Code Factory | 43f4e892-f114-419c-8099-219f8c118b78 | Code Factory | 🔄 Deploying | — |
+| HBx_IN3 | Research Lab | 43f4e892-f114-419c-8099-219f8c118b78 | Research Lab | 🔄 Deploying | — |
+| HBx_SK1 | Skill Builder | c726957c-9d6c-4b19-80c6-3f7a2f45adcf | Agent Designer & Skill Creator | 🔄 Deploying | — |
+| HBx_SL1 | Schellie | a569a0b7-4d7a-4d6f-b235-25a70f9454fa | Digital Online Sales Counselor | ✅ Active | — |
+| HBx_SL2 | Competitive Intel | a569a0b7-4d7a-4d6f-b235-25a70f9454fa | Market Intelligence Agent | 🔄 Deploying | — |
+| HBx_SP1 | Bug Triage | 35eb92a0-f986-4c4f-a358-6aedab7e4991 | Bug Triage & Platform Maintenance | 🔄 Deploying | — |
 
 ### Agent Health Summary
 
 | Metric | Value |
 |--------|-------|
-| Total Agents | 4 |
+| Total Agents | 8 |
 | Active | 2 |
-| Deploying | 2 |
+| Deploying | 6 |
+| Inactive | 0 |
 | Issues | 0 |
 
 ---

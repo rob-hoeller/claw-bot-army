@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { motion } from "framer-motion"
 import {
   User as UserIcon,
@@ -11,6 +11,8 @@ import {
   AlertCircle,
   CheckCircle2,
   X,
+  Server,
+  RefreshCw,
 } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { User } from "@supabase/supabase-js"
@@ -36,6 +38,33 @@ export default function Settings({ user, onClose, onUpdate, embedded = false }: 
   const [message, setMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState("account")
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [platformConfig, setPlatformConfig] = useState<any>(null)
+  const [platformLoading, setPlatformLoading] = useState(false)
+  const [platformError, setPlatformError] = useState<string | null>(null)
+  const [lastRefreshed, setLastRefreshed] = useState<string | null>(null)
+
+  const fetchConfig = useCallback(async () => {
+    setPlatformLoading(true)
+    setPlatformError(null)
+    try {
+      const res = await fetch("/api/config")
+      if (!res.ok) throw new Error("Failed to fetch config")
+      const data = await res.json()
+      setPlatformConfig(data.config)
+      setLastRefreshed(new Date().toLocaleTimeString())
+    } catch (err) {
+      setPlatformError(String(err))
+    } finally {
+      setPlatformLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === "platform" && !platformConfig) {
+      fetchConfig()
+    }
+  }, [activeTab, platformConfig, fetchConfig])
 
   const has2FA = user.user_metadata?.two_factor_enabled || false
 
@@ -150,6 +179,10 @@ export default function Settings({ user, onClose, onUpdate, embedded = false }: 
                 2FA
               </Badge>
             )}
+          </TabsTrigger>
+          <TabsTrigger value="platform" className="gap-2">
+            <Server className="h-4 w-4" />
+            Platform
           </TabsTrigger>
         </TabsList>
 
@@ -310,6 +343,246 @@ export default function Settings({ user, onClose, onUpdate, embedded = false }: 
               <Badge variant="success">Current</Badge>
             </div>
           </CardSection>
+        </TabsContent>
+
+        <TabsContent value="platform" className="space-y-6">
+          {/* Refresh header */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-white/40">
+              {lastRefreshed ? `Last refreshed: ${lastRefreshed}` : ""}
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={fetchConfig}
+              disabled={platformLoading}
+              className="gap-2"
+            >
+              <RefreshCw className={`h-3 w-3 ${platformLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
+
+          {platformLoading && !platformConfig && (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+            </div>
+          )}
+
+          {platformError && (
+            <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-4 py-3">
+              <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+              <p className="text-sm text-red-400">{platformError}</p>
+            </div>
+          )}
+
+          {platformConfig && (
+            <>
+              {/* Model Configuration */}
+              <CardSection title="Model Configuration">
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">
+                      Primary Model
+                    </label>
+                    <p className="mt-1 font-mono text-xs text-white bg-white/[0.04] border border-white/10 rounded px-3 py-2 inline-block">
+                      {platformConfig.agents?.defaults?.model?.primary || "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">
+                      Fallback Models
+                    </label>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {(platformConfig.agents?.defaults?.model?.fallbacks || []).map((m: string, i: number) => (
+                        <span key={i} className="font-mono text-xs text-white/70 bg-white/[0.04] border border-white/5 rounded px-2 py-1">
+                          {i + 1}. {m}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">
+                      Model Aliases
+                    </label>
+                    <div className="mt-1 grid gap-1">
+                      {Object.entries(platformConfig.agents?.defaults?.models || {}).map(([model, cfg]) => {
+                        const alias = (cfg as Record<string, string>)?.alias
+                        return alias ? (
+                          <div key={model} className="flex items-center gap-2 text-xs">
+                            <span className="font-mono text-white/70">{model}</span>
+                            <span className="text-white/30">→</span>
+                            <Badge variant="outline">{alias}</Badge>
+                          </div>
+                        ) : null
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </CardSection>
+
+              {/* Agent Registry */}
+              <CardSection title="Agent Registry"
+                action={
+                  <Badge variant="outline">
+                    {(platformConfig.agents?.list || []).length} agents
+                  </Badge>
+                }
+              >
+                <div className="space-y-4">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-white/40 text-left border-b border-white/5">
+                          <th className="pb-2 pr-4 font-medium">ID</th>
+                          <th className="pb-2 pr-4 font-medium">Name</th>
+                          <th className="pb-2 font-medium">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(platformConfig.agents?.list || []).map((agent: Record<string, unknown>) => (
+                          <tr key={String(agent.id)} className="border-b border-white/[0.03]">
+                            <td className="py-2 pr-4 font-mono text-white">{String(agent.id)}</td>
+                            <td className="py-2 pr-4 text-white/70">{String(agent.name || (agent.default ? "Main Agent" : "—"))}</td>
+                            <td className="py-2">
+                              <Badge variant="success">Active</Badge>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-medium text-white/40 uppercase tracking-wide">
+                        Spawnable Agents
+                      </label>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {(platformConfig.agents?.list?.find((a: Record<string, unknown>) => a.default)?.subagents?.allowAgents || []).map((id: string) => (
+                          <Badge key={id} variant="outline" className="font-mono text-xs">{id}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-white/40 uppercase tracking-wide">
+                        Concurrency Limits
+                      </label>
+                      <div className="mt-1 space-y-1 text-xs text-white/70">
+                        <p>Max concurrent: <span className="text-white font-mono">{platformConfig.agents?.defaults?.maxConcurrent ?? "N/A"}</span></p>
+                        <p>Max subagents: <span className="text-white font-mono">{platformConfig.agents?.defaults?.subagents?.maxConcurrent ?? "N/A"}</span></p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </CardSection>
+
+              {/* Channel Configuration */}
+              <CardSection title="Channel Configuration">
+                <div className="space-y-3">
+                  {Object.entries(platformConfig.channels || {} as Record<string, Record<string, unknown>>).map(([name, cfg]) => {
+                    const ch = cfg as Record<string, unknown>
+                    const dmPolicy = ch.dmPolicy as string | undefined
+                    const groupPolicy = ch.groupPolicy as string | undefined
+                    const streamMode = ch.streamMode as string | undefined
+                    return (
+                      <div key={name} className="p-4 rounded-lg bg-white/[0.02] border border-white/5">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-sm font-medium text-white capitalize">{name}</span>
+                          <Badge variant={ch.enabled ? "success" : "outline"}>
+                            {ch.enabled ? "Active" : "Disabled"}
+                          </Badge>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 text-xs">
+                          {dmPolicy && (
+                            <div>
+                              <span className="text-white/40">DM Policy: </span>
+                              <span className="text-white/70">{dmPolicy}</span>
+                            </div>
+                          )}
+                          {groupPolicy && (
+                            <div>
+                              <span className="text-white/40">Group Policy: </span>
+                              <span className="text-white/70">{groupPolicy}</span>
+                            </div>
+                          )}
+                          {streamMode && (
+                            <div>
+                              <span className="text-white/40">Stream Mode: </span>
+                              <span className="text-white/70">{streamMode}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardSection>
+
+              {/* Gateway Settings */}
+              <CardSection title="Gateway Settings">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">Port</label>
+                    <p className="mt-1 font-mono text-xs text-white">{platformConfig.gateway?.port ?? "N/A"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">Mode</label>
+                    <p className="mt-1 font-mono text-xs text-white">{platformConfig.gateway?.mode ?? "N/A"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">Bind</label>
+                    <p className="mt-1 font-mono text-xs text-white">{platformConfig.gateway?.bind ?? "N/A"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">Auth Mode</label>
+                    <p className="mt-1 font-mono text-xs text-white">{platformConfig.gateway?.auth?.mode ?? "N/A"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">HTTP Endpoints</label>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {Object.entries(platformConfig.gateway?.http?.endpoints || {}).map(([name, ep]) => (
+                        <Badge key={name} variant={(ep as Record<string, unknown>)?.enabled ? "success" : "outline"}>
+                          {name}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">Tailscale</label>
+                    <Badge variant={platformConfig.gateway?.tailscale?.mode === "off" ? "outline" : "success"}>
+                      {platformConfig.gateway?.tailscale?.mode ?? "N/A"}
+                    </Badge>
+                  </div>
+                </div>
+              </CardSection>
+
+              {/* General */}
+              <CardSection title="General">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">Workspace</label>
+                    <p className="mt-1 font-mono text-xs text-white/70">{platformConfig.agents?.defaults?.workspace ?? "N/A"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">Compaction Mode</label>
+                    <p className="mt-1 font-mono text-xs text-white">{platformConfig.agents?.defaults?.compaction?.mode ?? "N/A"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">Version</label>
+                    <p className="mt-1 font-mono text-xs text-white">{platformConfig.meta?.lastTouchedVersion ?? "N/A"}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-white/40 uppercase tracking-wide">Last Config Touch</label>
+                    <p className="mt-1 font-mono text-xs text-white/70">
+                      {platformConfig.meta?.lastTouchedAt
+                        ? new Date(platformConfig.meta.lastTouchedAt).toLocaleString()
+                        : "N/A"}
+                    </p>
+                  </div>
+                </div>
+              </CardSection>
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </motion.div>
