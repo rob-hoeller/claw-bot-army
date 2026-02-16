@@ -186,6 +186,37 @@ fi
 
 echo "   ✅ MEMORY.md (dynamic registry + static content)"
 
+# Sync OpenClaw config to Supabase (redacted) for dashboard access
+OPENCLAW_CONFIG="$HOME/.openclaw/openclaw.json"
+if [ -f "$OPENCLAW_CONFIG" ] && command -v node &> /dev/null; then
+  REDACTED_JSON=$(node -e "
+    const fs = require('fs');
+    const c = JSON.parse(fs.readFileSync('$OPENCLAW_CONFIG', 'utf-8'));
+    function r(o, k) {
+      if (typeof o === 'string' && o === '__OPENCLAW_REDACTED__') return '••••••••';
+      if (typeof o !== 'object' || o === null) return o;
+      if (Array.isArray(o)) return o.map((v,i) => r(v, String(i)));
+      const res = {};
+      for (const [key, val] of Object.entries(o)) {
+        if (typeof val === 'string' && ['token','key','secret','password','bottoken'].some(s => key.toLowerCase().replace(/[^a-z]/g,'').includes(s))) {
+          res[key] = '••••••••';
+        } else { res[key] = r(val, key); }
+      }
+      return res;
+    }
+    console.log(JSON.stringify(r(c, '')));
+  " 2>/dev/null)
+  if [ -n "$REDACTED_JSON" ]; then
+    curl -s -X POST "${SUPABASE_URL}/rest/v1/platform_config" \
+      -H "apikey: ${SUPABASE_ANON_KEY}" \
+      -H "Authorization: Bearer ${SUPABASE_ANON_KEY}" \
+      -H "Content-Type: application/json" \
+      -H "Prefer: resolution=merge-duplicates" \
+      -d "{\"id\": \"current\", \"config\": $REDACTED_JSON, \"updated_at\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"}" > /dev/null 2>&1
+    echo "   ✅ Platform config synced to Supabase"
+  fi
+fi
+
 echo ""
 echo "✅ Sync complete for $AGENT_ID"
 echo "   Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
