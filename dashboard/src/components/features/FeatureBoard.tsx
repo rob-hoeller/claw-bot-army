@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { supabase } from "@/lib/supabase"
+import { WorkItemChat } from "./WorkItemChat"
 
 // Types
 interface Feature {
@@ -257,6 +258,7 @@ function FeatureCard({ feature, agents, onClick }: { feature: Feature; agents: A
           )}
         </div>
         <div className="flex items-center gap-1">
+          <MessageSquare className="h-2.5 w-2.5 text-white/20 group-hover:text-purple-400 transition-colors" />
           {feature.pr_url && (
             <GitPullRequest className={cn("h-3 w-3", feature.pr_status === 'merged' ? 'text-green-400' : 'text-purple-400')} />
           )}
@@ -273,15 +275,18 @@ function FeatureCard({ feature, agents, onClick }: { feature: Feature; agents: A
 function FeatureDetailPanel({ 
   feature, 
   agents, 
-  onClose 
+  onClose,
+  initialTab = 'details'
 }: { 
   feature: Feature
   agents: Agent[]
-  onClose: () => void 
+  onClose: () => void
+  initialTab?: 'details' | 'chat'
 }) {
   const [newComment, setNewComment] = useState("")
   const [comments, setComments] = useState<Comment[]>([])
   const [loadingComments, setLoadingComments] = useState(true)
+  const [activeTab, setActiveTab] = useState<'details' | 'chat'>(initialTab)
   
   const priority = priorityConfig[feature.priority]
   const status = statusConfig[feature.status]
@@ -391,7 +396,43 @@ function FeatureDetailPanel({
         </div>
       </div>
 
-      {/* Content */}
+      {/* Tab Navigation */}
+      <div className="flex-shrink-0 flex border-b border-white/10">
+        <button
+          onClick={() => setActiveTab('details')}
+          className={cn(
+            "flex-1 py-2 text-[11px] font-medium transition-colors text-center",
+            activeTab === 'details' 
+              ? "text-purple-400 border-b-2 border-purple-400" 
+              : "text-white/40 hover:text-white/60"
+          )}
+        >
+          Details
+        </button>
+        <button
+          onClick={() => setActiveTab('chat')}
+          className={cn(
+            "flex-1 py-2 text-[11px] font-medium transition-colors text-center flex items-center justify-center gap-1.5",
+            activeTab === 'chat' 
+              ? "text-purple-400 border-b-2 border-purple-400" 
+              : "text-white/40 hover:text-white/60"
+          )}
+        >
+          <MessageSquare className="h-3 w-3" />
+          Chat
+        </button>
+      </div>
+
+      {/* Chat Tab */}
+      {activeTab === 'chat' && (
+        <div className="flex-1 overflow-hidden">
+          <WorkItemChat workItemId={feature.id} />
+        </div>
+      )}
+
+      {/* Details Tab */}
+      {activeTab === 'details' && (
+      <>
       <div className="flex-1 overflow-y-auto">
         {/* Description */}
         {feature.description && (
@@ -534,6 +575,8 @@ function FeatureDetailPanel({
           </Button>
         </div>
       </div>
+      </>
+      )}
     </motion.div>
   )
 }
