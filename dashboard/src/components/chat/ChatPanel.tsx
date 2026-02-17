@@ -42,8 +42,59 @@ export function ChatPanel({
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // Generate a stable session key for OpenClaw
+  // Generate a stable session key for OpenClaw (always uses short userId)
   const openclawSessionKey = `dashboard-${agentId}-${userId || 'anon'}`
+
+  // Resolved Supabase auth UUID for the userId (loaded from user_mappings table)
+  const [resolvedAuthUUID, setResolvedAuthUUID] = useState<string | null>(null)
+  const [isResolvingUser, setIsResolvingUser] = useState(true)
+
+  // Check if userId is a valid UUID (real Supabase user) vs placeholder
+  const isValidUUID = (id: string) => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    return uuidRegex.test(id)
+  }
+
+  // Resolve short userId to Supabase auth UUID
+  useEffect(() => {
+    async function resolveUser() {
+      if (!userId || !supabase) {
+        setResolvedAuthUUID(null)
+        setIsResolvingUser(false)
+        return
+      }
+      // If already a UUID, use directly
+      if (isValidUUID(userId)) {
+        setResolvedAuthUUID(userId)
+        setIsResolvingUser(false)
+        return
+      }
+      // Look up short_id in user_mappings table
+      try {
+        const { data, error } = await supabase
+          .from('user_mappings')
+          .select('auth_uuid')
+          .eq('short_id', userId)
+          .single()
+        if (data && !error) {
+          setResolvedAuthUUID(data.auth_uuid)
+        } else {
+          console.warn(`[ChatPanel] No user_mapping found for short_id="${userId}"`)
+          setResolvedAuthUUID(null)
+        }
+      } catch (err) {
+        console.error('[ChatPanel] Error resolving user mapping:', err)
+        setResolvedAuthUUID(null)
+      } finally {
+        setIsResolvingUser(false)
+      }
+    }
+    setIsResolvingUser(true)
+    resolveUser()
+  }, [userId])
+
+  // The effective user ID for Supabase queries (UUID)
+  const effectiveUserId = resolvedAuthUUID
 
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
@@ -54,14 +105,8 @@ export function ChatPanel({
     scrollToBottom()
   }, [messages, streamingContent, scrollToBottom])
 
-  // Check if userId is a valid UUID (real Supabase user) vs placeholder
-  const isValidUUID = (id: string) => {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    return uuidRegex.test(id)
-  }
-
-  // Demo mode: no Supabase, no userId, or placeholder userId
-  const isDemoMode = !supabase || !userId || !isValidUUID(userId)
+  // Demo mode: no Supabase, no resolved UUID
+  const isDemoMode = !supabase || !effectiveUserId || isResolvingUser
 
   // Fetch history from OpenClaw Gateway
   const fetchGatewayHistory = useCallback(async () => {
@@ -186,11 +231,11 @@ export function ChatPanel({
         setIsLoading(true)
         setError(null)
 
-        // Try to find existing conversation
+        // Try to find existing conversation (using resolved auth UUID)
         const { data: existingConv, error: fetchError } = await sb
           .from('conversations')
           .select('*')
-          .eq('user_id', userId)
+          .eq('user_id', effectiveUserId)
           .eq('agent_id', agentId)
           .single()
 
@@ -205,7 +250,7 @@ export function ChatPanel({
           const { data: newConv, error: createError } = await sb
             .from('conversations')
             .insert({
-              user_id: userId,
+              user_id: effectiveUserId,
               agent_id: agentId,
               title: `Chat with ${agentName}`
             })
@@ -277,7 +322,7 @@ export function ChatPanel({
     }
 
     initConversation()
-  }, [agentId, agentName, userId, isDemoMode, gatewayConnected, syncFromGateway, fetchGatewayHistory])
+  }, [agentId, agentName, effectiveUserId, isDemoMode, gatewayConnected, syncFromGateway, fetchGatewayHistory])
 
   // Parse SSE stream from OpenClaw gateway
   const parseSSEStream = async (
