@@ -631,7 +631,12 @@ function Column({
 }
 
 // Main Component
-export function FeatureBoard() {
+interface FeatureBoardProps {
+  deepLinkItemId?: string | null
+  onItemChange?: (itemId: string | null) => void
+}
+
+export function FeatureBoard({ deepLinkItemId, onItemChange }: FeatureBoardProps = {}) {
   const [features, setFeatures] = useState<Feature[]>([])
   const [agents, setAgents] = useState<Agent[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -639,6 +644,25 @@ export function FeatureBoard() {
   const [filterPriority, setFilterPriority] = useState<string | null>(null)
   const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null)
   const isDemoMode = !supabase
+
+  // Deep link: auto-select feature when deepLinkItemId changes
+  useEffect(() => {
+    if (deepLinkItemId && features.length > 0) {
+      const found = features.find(f => f.id === deepLinkItemId)
+      if (found) setSelectedFeature(found)
+    }
+  }, [deepLinkItemId, features])
+
+  // Sync selection changes back to URL
+  const handleFeatureClick = (feature: Feature) => {
+    setSelectedFeature(feature)
+    onItemChange?.(feature.id)
+  }
+
+  const handleClosePanel = () => {
+    setSelectedFeature(null)
+    onItemChange?.(null)
+  }
 
   useEffect(() => {
     async function loadData() {
@@ -767,7 +791,7 @@ export function FeatureBoard() {
             column={column}
             features={filteredFeatures}
             agents={agents}
-            onFeatureClick={setSelectedFeature}
+            onFeatureClick={handleFeatureClick}
           />
         ))}
       </div>
@@ -781,12 +805,12 @@ export function FeatureBoard() {
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 bg-black/60 z-40"
-              onClick={() => setSelectedFeature(null)}
+              onClick={handleClosePanel}
             />
             <FeatureDetailPanel
               feature={selectedFeature}
               agents={agents}
-              onClose={() => setSelectedFeature(null)}
+              onClose={handleClosePanel}
             />
           </>
         )}
