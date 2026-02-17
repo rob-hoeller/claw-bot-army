@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion } from "framer-motion"
-import { Bot, Loader2, Wifi, WifiOff, RefreshCw } from "lucide-react"
+import { Bot, Loader2, Wifi, WifiOff, RefreshCw, ChevronUp } from "lucide-react"
 import { MessageBubble } from "./MessageBubble"
 import { ChatInput } from "./ChatInput"
 import { Message, Attachment, Conversation } from "./types"
@@ -30,6 +30,7 @@ export function ChatPanel({
   isReadOnly = false,
   syncFromGateway = false
 }: ChatPanelProps) {
+  const PAGE_SIZE = 10
   const [messages, setMessages] = useState<Message[]>([])
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -39,11 +40,15 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null)
   const [gatewayConnected, setGatewayConnected] = useState<boolean | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
-  // Generate a stable session key for OpenClaw
-  const openclawSessionKey = `dashboard-${agentId}-${sessionUserId || userId || 'anon'}`
+  // Generate a stable session key for OpenClaw (uses userId for per-user isolation)
+  const openclawSessionKey = `dashboard-${agentId}-${userId || 'anon'}`
+
 
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
@@ -54,14 +59,8 @@ export function ChatPanel({
     scrollToBottom()
   }, [messages, streamingContent, scrollToBottom])
 
-  // Check if userId is a valid UUID (real Supabase user) vs placeholder
-  const isValidUUID = (id: string) => {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    return uuidRegex.test(id)
-  }
-
-  // Demo mode: no Supabase, no userId, or placeholder userId
-  const isDemoMode = !supabase || !userId || !isValidUUID(userId)
+  // Demo mode: no Supabase or no userId
+  const isDemoMode = !supabase || !userId
 
   // Fetch history from OpenClaw Gateway
   const fetchGatewayHistory = useCallback(async () => {
@@ -97,6 +96,48 @@ export function ChatPanel({
       setIsSyncing(false)
     }
   }, [isDemoMode, conversation, fetchGatewayHistory, messages])
+
+  // Load older messages (pagination)
+  const loadMore = useCallback(async () => {
+    if (!conversation || isDemoMode || isLoadingMore || !hasMore) return
+
+    setIsLoadingMore(true)
+    const container = messagesContainerRef.current
+    const prevScrollHeight = container?.scrollHeight || 0
+
+    try {
+      const oldestMessage = messages[0]
+      if (!oldestMessage) return
+
+      const response = await fetch(
+        `/api/chat/messages?conversationId=${encodeURIComponent(conversation.id)}&before=${encodeURIComponent(oldestMessage.created_at)}&limit=${PAGE_SIZE + 1}`
+      )
+      if (!response.ok) throw new Error('Failed to load older messages')
+      const data = await response.json()
+      const olderMsgs = data.messages || []
+
+      if (olderMsgs.length > 0) {
+        const hasMoreMessages = olderMsgs.length > PAGE_SIZE
+        setHasMore(hasMoreMessages)
+        const toAdd = hasMoreMessages ? olderMsgs.slice(0, PAGE_SIZE) : olderMsgs
+        setMessages(prev => [...toAdd.reverse(), ...prev])
+
+        // Preserve scroll position after prepending
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight
+            container.scrollTop = newScrollHeight - prevScrollHeight
+          }
+        })
+      } else {
+        setHasMore(false)
+      }
+    } catch (err) {
+      console.error('Error loading more messages:', err)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [conversation, isDemoMode, isLoadingMore, hasMore, messages])
 
   // Check gateway connection on mount
   useEffect(() => {
@@ -134,55 +175,23 @@ export function ChatPanel({
         return
       }
 
-      // Real mode - use Supabase
-      const sb = supabase!
-      
+      // Real mode - use server API (service role)
       try {
         setIsLoading(true)
         setError(null)
 
-        // Try to find existing conversation
-        const { data: existingConv, error: fetchError } = await sb
-          .from('conversations')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('agent_id', agentId)
-          .single()
+        const response = await fetch(
+          `/api/chat/conversations?shortId=${encodeURIComponent(userId!)}&agentId=${encodeURIComponent(agentId)}`
+        )
+        if (!response.ok) throw new Error('Failed to load conversation')
+        const data = await response.json()
 
-        if (fetchError && fetchError.code !== 'PGRST116') {
-          throw fetchError
-        }
-
-        let conv = existingConv
-
-        // Create new conversation if none exists
-        if (!conv) {
-          const { data: newConv, error: createError } = await sb
-            .from('conversations')
-            .insert({
-              user_id: userId,
-              agent_id: agentId,
-              title: `Chat with ${agentName}`
-            })
-            .select()
-            .single()
-
-          if (createError) throw createError
-          conv = newConv
-        }
-
+        const conv = data.conversation
         setConversation(conv)
 
-        // Load messages from Supabase first
-        const { data: msgs, error: msgsError } = await sb
-          .from('messages')
-          .select('*')
-          .eq('conversation_id', conv.id)
-          .order('created_at', { ascending: true })
-
-        if (msgsError) throw msgsError
-
-        if (msgs && msgs.length > 0) {
+        const msgs = data.messages || []
+        if (msgs.length > 0) {
+          setHasMore(Boolean(data.hasMore))
           setMessages(msgs)
         } else if (syncFromGateway && gatewayConnected) {
           // If no local messages but sync enabled, try to fetch from OpenClaw
@@ -356,22 +365,24 @@ export function ChatPanel({
     setError(null)
 
     try {
-      // Save user message to Supabase (if connected)
-      if (!isDemoMode && supabase && conversation) {
-        const sb = supabase!
-        const { data: savedMsg, error: saveError } = await sb
-          .from('messages')
-          .insert({
-            conversation_id: conversation.id,
+      // Save user message via API (service role)
+      if (!isDemoMode && conversation) {
+        const response = await fetch('/api/chat/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: conversation.id,
             role: 'user',
             content,
             attachments
           })
-          .select()
-          .single()
-
-        if (saveError) throw saveError
-        setMessages(prev => prev.map(m => m.id === userMessage.id ? savedMsg : m))
+        })
+        if (!response.ok) throw new Error('Failed to save user message')
+        const data = await response.json()
+        const savedMsg = data.message
+        if (savedMsg) {
+          setMessages(prev => prev.map(m => m.id === userMessage.id ? savedMsg : m))
+        }
       }
 
       // Try to send to gateway
@@ -400,22 +411,24 @@ export function ChatPanel({
         created_at: new Date().toISOString()
       }
 
-      // Save assistant message to Supabase (if connected)
-      if (!isDemoMode && supabase && conversation) {
-        const sb = supabase!
-        const { data: savedResponse, error: responseError } = await sb
-          .from('messages')
-          .insert({
-            conversation_id: conversation.id,
+      // Save assistant message via API (service role)
+      if (!isDemoMode && conversation) {
+        const response = await fetch('/api/chat/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: conversation.id,
             role: 'assistant',
             content: responseContent,
             attachments: []
           })
-          .select()
-          .single()
-
-        if (responseError) throw responseError
-        setMessages(prev => [...prev, savedResponse])
+        })
+        if (!response.ok) throw new Error('Failed to save assistant message')
+        const data = await response.json()
+        const savedResponse = data.message
+        if (savedResponse) {
+          setMessages(prev => [...prev, savedResponse])
+        }
       } else {
         setMessages(prev => [...prev, assistantMessage])
       }
@@ -433,11 +446,23 @@ export function ChatPanel({
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 text-purple-400 animate-spin" />
-          <p className="text-sm text-white/50">Loading conversation...</p>
-        </div>
+      <div className="flex-1 flex flex-col p-4 space-y-4">
+        {/* Chat message skeletons */}
+        {[...Array(4)].map((_, i) => {
+          const isUser = i % 2 === 1
+          return (
+            <div key={i} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+              <div className="w-8 h-8 rounded-full bg-white/[0.06] animate-pulse flex-shrink-0" />
+              <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[75%]`}>
+                <div className="w-12 h-3 rounded bg-white/[0.04] animate-pulse mb-1" />
+                <div className="rounded-2xl bg-white/[0.06] animate-pulse px-4 py-3 space-y-2">
+                  <div className="h-3 w-48 rounded bg-white/[0.08] animate-pulse" />
+                  {i === 0 && <div className="h-3 w-32 rounded bg-white/[0.08] animate-pulse" />}
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     )
   }
@@ -507,7 +532,7 @@ export function ChatPanel({
       )}
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/20 flex items-center justify-center mb-4">
@@ -528,6 +553,23 @@ export function ChatPanel({
             animate={{ opacity: 1 }}
             className="space-y-1"
           >
+            {/* Load More Button */}
+            {hasMore && (
+              <div className="flex justify-center pb-3">
+                <button
+                  onClick={loadMore}
+                  disabled={isLoadingMore}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white/50 hover:text-white/70 bg-white/[0.05] hover:bg-white/[0.08] rounded-full transition-colors disabled:opacity-50"
+                >
+                  {isLoadingMore ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ChevronUp className="h-3 w-3" />
+                  )}
+                  {isLoadingMore ? 'Loading...' : 'Load older messages'}
+                </button>
+              </div>
+            )}
             {messages.map((message) => (
               <MessageBubble
                 key={message.id}

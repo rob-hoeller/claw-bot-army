@@ -477,12 +477,10 @@ function AgentDetailPanel({
   agent,
   onClose,
   defaultUserId,
-  supabaseUserId,
 }: {
   agent: Agent
   onClose: () => void
   defaultUserId?: string
-  supabaseUserId?: string
 }) {
   const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'status' | 'cron' | 'memory'>('chat')
   const [activeUser, setActiveUser] = useState(defaultUserId || chatUsers[0].id)
@@ -745,8 +743,7 @@ function AgentDetailPanel({
                 agentId={agent.id.toLowerCase()}
                 agentName={agent.name}
                 agentEmoji={getAgentEmoji(agent)}
-                userId={supabaseUserId}
-                sessionUserId={activeUser}
+                userId={activeUser}
                 isReadOnly={isReadOnly}
               />
             </div>
@@ -935,11 +932,10 @@ function AgentDetailPanel({
 interface AgentsPageProps {
   userEmail?: string
   userMetadata?: Record<string, unknown>
-  supabaseUserId?: string
 }
 
 // Main Agents Page
-export default function AgentsPage({ userEmail, userMetadata, supabaseUserId }: AgentsPageProps) {
+export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps) {
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showGlobalKnowledge, setShowGlobalKnowledge] = useState(false)
@@ -1194,7 +1190,6 @@ export default function AgentsPage({ userEmail, userMetadata, supabaseUserId }: 
               agent={selectedAgent}
               onClose={() => setSelectedAgent(null)}
               defaultUserId={currentUserId}
-              supabaseUserId={supabaseUserId}
             />
           </>
         )}

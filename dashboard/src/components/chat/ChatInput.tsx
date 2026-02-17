@@ -61,50 +61,21 @@ export function ChatInput({
     })
   }
 
-  const [isUploading, setIsUploading] = useState(false)
-
   const handleSend = async () => {
     if (!message.trim() && pendingFiles.length === 0) return
-    if (disabled || isUploading) return
+    if (disabled) return
 
-    // Upload files to Supabase Storage
-    setIsUploading(true)
-    const attachments: Attachment[] = []
-
-    try {
-      for (const pf of pendingFiles) {
-        const formData = new FormData()
-        formData.append('file', pf.file)
-        formData.append('channel', 'webchat')
-
-        const res = await fetch('/api/chat/upload-media', {
-          method: 'POST',
-          body: formData,
-        })
-
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}))
-          console.error('Upload failed:', err)
-          continue
-        }
-
-        const data = await res.json()
-        attachments.push({
-          type: pf.type,
-          url: data.storage_url,
-          name: pf.file.name,
-          size: pf.file.size,
-          mimeType: pf.file.type,
-        })
-      }
-    } finally {
-      setIsUploading(false)
-    }
+    // TODO: Upload files to Supabase Storage and get URLs
+    // For now, we'll create placeholder attachments
+    const attachments: Attachment[] = pendingFiles.map(pf => ({
+      type: pf.type,
+      url: pf.preview || '', // Will be replaced with actual URL after upload
+      name: pf.file.name,
+      size: pf.file.size
+    }))
 
     onSend(message.trim(), attachments)
     setMessage("")
-    // Revoke preview URLs
-    pendingFiles.forEach(pf => pf.preview && URL.revokeObjectURL(pf.preview))
     setPendingFiles([])
   }
 
@@ -240,7 +211,7 @@ export function ChatInput({
         {/* Send Button */}
         <Button
           onClick={handleSend}
-          disabled={disabled || isUploading || (!message.trim() && pendingFiles.length === 0)}
+          disabled={disabled || (!message.trim() && pendingFiles.length === 0)}
           className="h-9 w-9 p-0 bg-purple-500 hover:bg-purple-600 disabled:opacity-30"
         >
           <Send className="h-4 w-4" />
