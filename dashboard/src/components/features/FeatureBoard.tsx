@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
 import { WorkItemChat } from "./WorkItemChat"
 
@@ -630,6 +631,200 @@ function Column({
   )
 }
 
+// Create Feature Modal
+function CreateFeatureModal({
+  agents,
+  onClose,
+  onCreated,
+}: {
+  agents: Agent[]
+  onClose: () => void
+  onCreated: (feature: Feature) => void
+}) {
+  const [title, setTitle] = useState("")
+  const [description, setDescription] = useState("")
+  const [status, setStatus] = useState<Feature['status']>("backlog")
+  const [priority, setPriority] = useState<Feature['priority']>("medium")
+  const [assignedTo, setAssignedTo] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!title.trim()) { setError("Title is required"); return }
+    setSaving(true)
+    setError(null)
+
+    const newFeature = {
+      title: title.trim(),
+      description: description.trim() || null,
+      status,
+      priority,
+      assigned_to: assignedTo || null,
+    }
+
+    if (!supabase) {
+      // Demo mode: create local feature
+      const local: Feature = {
+        ...newFeature,
+        id: crypto.randomUUID(),
+        requested_by: null,
+        approved_by: null,
+        acceptance_criteria: null,
+        labels: null,
+        pr_url: null,
+        pr_number: null,
+        pr_status: null,
+        branch_name: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      onCreated(local)
+      onClose()
+      return
+    }
+
+    try {
+      const { data, error: dbError } = await supabase
+        .from('features')
+        .insert(newFeature)
+        .select()
+        .single()
+      if (dbError) throw dbError
+      onCreated(data as Feature)
+      onClose()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create feature")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 bg-black/60 z-50"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        onClick={(e) => e.target === e.currentTarget && onClose()}
+      >
+        <form
+          onSubmit={handleSubmit}
+          className="w-full max-w-md bg-[#0a0a0a] border border-white/10 rounded-lg p-4 space-y-3"
+        >
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-white">New Feature</h3>
+            <Button type="button" variant="ghost" size="icon" onClick={onClose} className="h-7 w-7">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {error && (
+            <div className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 rounded px-2 py-1">
+              {error}
+            </div>
+          )}
+
+          <div>
+            <label className="text-[10px] text-white/50 uppercase tracking-wider">Title *</label>
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Feature title..."
+              className="h-8 text-xs bg-white/5 border-white/10 mt-1"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label className="text-[10px] text-white/50 uppercase tracking-wider">Description</label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What should this feature do?"
+              className="text-xs bg-white/5 border-white/10 mt-1 min-h-[60px]"
+            />
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div>
+              <label className="text-[10px] text-white/50 uppercase tracking-wider">Status</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as Feature['status'])}
+                className="mt-1 w-full h-8 text-xs bg-white/5 border border-white/10 rounded-md text-white/80 px-2"
+              >
+                <option value="backlog">Backlog</option>
+                <option value="planned">Planned</option>
+                <option value="in_progress">In Progress</option>
+                <option value="review">Review</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-white/50 uppercase tracking-wider">Priority</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as Feature['priority'])}
+                className="mt-1 w-full h-8 text-xs bg-white/5 border border-white/10 rounded-md text-white/80 px-2"
+              >
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="text-[10px] text-white/50 uppercase tracking-wider">Assign To</label>
+              <select
+                value={assignedTo}
+                onChange={(e) => setAssignedTo(e.target.value)}
+                className="mt-1 w-full h-8 text-xs bg-white/5 border border-white/10 rounded-md text-white/80 px-2"
+              >
+                <option value="">Unassigned</option>
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.emoji} {a.name || a.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="ghost" size="sm" onClick={onClose} className="h-7 text-xs">
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={saving} className="h-7 text-xs gap-1">
+              {saving ? (
+                <>
+                  <div className="h-3 w-3 border border-white/40 border-t-transparent rounded-full animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-3 w-3" />
+                  Create
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      </motion.div>
+    </>
+  )
+}
+
 // Main Component
 interface FeatureBoardProps {
   deepLinkItemId?: string | null
@@ -643,6 +838,7 @@ export function FeatureBoard({ deepLinkItemId, onItemChange }: FeatureBoardProps
   const [searchQuery, setSearchQuery] = useState("")
   const [filterPriority, setFilterPriority] = useState<string | null>(null)
   const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null)
+  const [showCreateModal, setShowCreateModal] = useState(false)
   const isDemoMode = !supabase
 
   // Deep link: auto-select feature when deepLinkItemId changes
@@ -734,7 +930,7 @@ export function FeatureBoard({ deepLinkItemId, onItemChange }: FeatureBoardProps
           <h2 className="text-sm font-semibold text-white">Feature Board</h2>
           <p className="text-[11px] text-white/40">Track requests and progress</p>
         </div>
-        <Button size="sm" className="h-7 text-xs gap-1">
+        <Button size="sm" className="h-7 text-xs gap-1" onClick={() => setShowCreateModal(true)}>
           <Plus className="h-3 w-3" />
           New
         </Button>
@@ -795,6 +991,17 @@ export function FeatureBoard({ deepLinkItemId, onItemChange }: FeatureBoardProps
           />
         ))}
       </div>
+
+      {/* Create Modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <CreateFeatureModal
+            agents={agents}
+            onClose={() => setShowCreateModal(false)}
+            onCreated={(feature) => setFeatures((prev) => [feature, ...prev])}
+          />
+        )}
+      </AnimatePresence>
 
       {/* Detail Panel */}
       <AnimatePresence>
