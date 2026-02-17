@@ -287,7 +287,7 @@ export function ChatPanel({
   }, [messages])
 
   // Send message to OpenClaw gateway
-  const sendToGateway = async (content: string): Promise<string> => {
+  const sendToGateway = async (content: string, attachments: Attachment[] = []): Promise<string> => {
     abortControllerRef.current = new AbortController()
 
     // Include conversation history for context
@@ -300,8 +300,12 @@ export function ChatPanel({
         message: content,
         agentId,
         sessionKey: openclawSessionKey,
-        history, // Send full history for context
+        history,
         stream: true,
+        attachments: attachments.filter(a => a.type === 'image').map(a => ({
+          type: 'image_url',
+          image_url: { url: a.url },
+        })),
       }),
       signal: abortControllerRef.current.signal,
     })
@@ -375,7 +379,7 @@ export function ChatPanel({
 
       if (gatewayConnected) {
         try {
-          responseContent = await sendToGateway(content)
+          responseContent = await sendToGateway(content, attachments)
         } catch (err) {
           console.error('Gateway error, falling back to mock:', err)
           // Fallback to mock if gateway fails
