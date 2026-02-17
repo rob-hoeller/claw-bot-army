@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { motion } from "framer-motion"
-import { Bot, Loader2, Wifi, WifiOff, RefreshCw } from "lucide-react"
+import { Bot, Loader2, Wifi, WifiOff, RefreshCw, ChevronUp } from "lucide-react"
 import { MessageBubble } from "./MessageBubble"
 import { ChatInput } from "./ChatInput"
 import { Message, Attachment, Conversation } from "./types"
@@ -26,6 +26,7 @@ export function ChatPanel({
   isReadOnly = false,
   syncFromGateway = false
 }: ChatPanelProps) {
+  const PAGE_SIZE = 10
   const [messages, setMessages] = useState<Message[]>([])
   const [conversation, setConversation] = useState<Conversation | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -35,7 +36,10 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null)
   const [gatewayConnected, setGatewayConnected] = useState<boolean | null>(null)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesContainerRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Generate a stable session key for OpenClaw
@@ -93,6 +97,51 @@ export function ChatPanel({
       setIsSyncing(false)
     }
   }, [isDemoMode, conversation, fetchGatewayHistory, messages])
+
+  // Load older messages (pagination)
+  const loadMore = useCallback(async () => {
+    if (!conversation || isDemoMode || !supabase || isLoadingMore || !hasMore) return
+
+    setIsLoadingMore(true)
+    const container = messagesContainerRef.current
+    const prevScrollHeight = container?.scrollHeight || 0
+
+    try {
+      const oldestMessage = messages[0]
+      if (!oldestMessage) return
+
+      const { data: olderMsgs, error: fetchErr } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversation.id)
+        .lt('created_at', oldestMessage.created_at)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE + 1)
+
+      if (fetchErr) throw fetchErr
+
+      if (olderMsgs && olderMsgs.length > 0) {
+        const hasMoreMessages = olderMsgs.length > PAGE_SIZE
+        setHasMore(hasMoreMessages)
+        const toAdd = hasMoreMessages ? olderMsgs.slice(0, PAGE_SIZE) : olderMsgs
+        setMessages(prev => [...toAdd.reverse(), ...prev])
+
+        // Preserve scroll position after prepending
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight
+            container.scrollTop = newScrollHeight - prevScrollHeight
+          }
+        })
+      } else {
+        setHasMore(false)
+      }
+    } catch (err) {
+      console.error('Error loading more messages:', err)
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [conversation, isDemoMode, isLoadingMore, hasMore, messages])
 
   // Check gateway connection on mount
   useEffect(() => {
@@ -169,17 +218,21 @@ export function ChatPanel({
 
         setConversation(conv)
 
-        // Load messages from Supabase first
+        // Load last PAGE_SIZE messages from Supabase (newest first, then reverse)
         const { data: msgs, error: msgsError } = await sb
           .from('messages')
           .select('*')
           .eq('conversation_id', conv.id)
-          .order('created_at', { ascending: true })
+          .order('created_at', { ascending: false })
+          .limit(PAGE_SIZE + 1)
 
         if (msgsError) throw msgsError
 
         if (msgs && msgs.length > 0) {
-          setMessages(msgs)
+          const hasMoreMessages = msgs.length > PAGE_SIZE
+          setHasMore(hasMoreMessages)
+          const displayMsgs = hasMoreMessages ? msgs.slice(0, PAGE_SIZE) : msgs
+          setMessages(displayMsgs.reverse())
         } else if (syncFromGateway && gatewayConnected) {
           // If no local messages but sync enabled, try to fetch from OpenClaw
           const gatewayMessages = await fetchGatewayHistory()
@@ -425,11 +478,23 @@ export function ChatPanel({
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 text-purple-400 animate-spin" />
-          <p className="text-sm text-white/50">Loading conversation...</p>
-        </div>
+      <div className="flex-1 flex flex-col p-4 space-y-4">
+        {/* Chat message skeletons */}
+        {[...Array(4)].map((_, i) => {
+          const isUser = i % 2 === 1
+          return (
+            <div key={i} className={`flex gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+              <div className="w-8 h-8 rounded-full bg-white/[0.06] animate-pulse flex-shrink-0" />
+              <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[75%]`}>
+                <div className="w-12 h-3 rounded bg-white/[0.04] animate-pulse mb-1" />
+                <div className="rounded-2xl bg-white/[0.06] animate-pulse px-4 py-3 space-y-2">
+                  <div className="h-3 w-48 rounded bg-white/[0.08] animate-pulse" />
+                  {i === 0 && <div className="h-3 w-32 rounded bg-white/[0.08] animate-pulse" />}
+                </div>
+              </div>
+            </div>
+          )
+        })}
       </div>
     )
   }
@@ -499,7 +564,7 @@ export function ChatPanel({
       )}
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/20 flex items-center justify-center mb-4">
@@ -520,6 +585,23 @@ export function ChatPanel({
             animate={{ opacity: 1 }}
             className="space-y-1"
           >
+            {/* Load More Button */}
+            {hasMore && (
+              <div className="flex justify-center pb-3">
+                <button
+                  onClick={loadMore}
+                  disabled={isLoadingMore}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white/50 hover:text-white/70 bg-white/[0.05] hover:bg-white/[0.08] rounded-full transition-colors disabled:opacity-50"
+                >
+                  {isLoadingMore ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ChevronUp className="h-3 w-3" />
+                  )}
+                  {isLoadingMore ? 'Loading...' : 'Load older messages'}
+                </button>
+              </div>
+            )}
             {messages.map((message) => (
               <MessageBubble
                 key={message.id}
