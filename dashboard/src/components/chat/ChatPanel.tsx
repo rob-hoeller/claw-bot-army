@@ -45,56 +45,6 @@ export function ChatPanel({
   // Generate a stable session key for OpenClaw (always uses short userId)
   const openclawSessionKey = `dashboard-${agentId}-${userId || 'anon'}`
 
-  // Resolved Supabase auth UUID for the userId (loaded from user_mappings table)
-  const [resolvedAuthUUID, setResolvedAuthUUID] = useState<string | null>(null)
-  const [isResolvingUser, setIsResolvingUser] = useState(true)
-
-  // Check if userId is a valid UUID (real Supabase user) vs placeholder
-  const isValidUUID = (id: string) => {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    return uuidRegex.test(id)
-  }
-
-  // Resolve short userId to Supabase auth UUID
-  useEffect(() => {
-    async function resolveUser() {
-      if (!userId || !supabase) {
-        setResolvedAuthUUID(null)
-        setIsResolvingUser(false)
-        return
-      }
-      // If already a UUID, use directly
-      if (isValidUUID(userId)) {
-        setResolvedAuthUUID(userId)
-        setIsResolvingUser(false)
-        return
-      }
-      // Look up short_id in user_mappings table
-      try {
-        const { data, error } = await supabase
-          .from('user_mappings')
-          .select('auth_uuid')
-          .eq('short_id', userId)
-          .single()
-        if (data && !error) {
-          setResolvedAuthUUID(data.auth_uuid)
-        } else {
-          console.warn(`[ChatPanel] No user_mapping found for short_id="${userId}"`)
-          setResolvedAuthUUID(null)
-        }
-      } catch (err) {
-        console.error('[ChatPanel] Error resolving user mapping:', err)
-        setResolvedAuthUUID(null)
-      } finally {
-        setIsResolvingUser(false)
-      }
-    }
-    setIsResolvingUser(true)
-    resolveUser()
-  }, [userId])
-
-  // The effective user ID for Supabase queries (UUID)
-  const effectiveUserId = resolvedAuthUUID
 
   // Scroll to bottom when messages change
   const scrollToBottom = useCallback(() => {
@@ -105,8 +55,8 @@ export function ChatPanel({
     scrollToBottom()
   }, [messages, streamingContent, scrollToBottom])
 
-  // Demo mode: no Supabase, no resolved UUID
-  const isDemoMode = !supabase || !effectiveUserId || isResolvingUser
+  // Demo mode: no Supabase or no userId
+  const isDemoMode = !supabase || !userId
 
   // Fetch history from OpenClaw Gateway
   const fetchGatewayHistory = useCallback(async () => {
@@ -145,7 +95,7 @@ export function ChatPanel({
 
   // Load older messages (pagination)
   const loadMore = useCallback(async () => {
-    if (!conversation || isDemoMode || !supabase || isLoadingMore || !hasMore) return
+    if (!conversation || isDemoMode || isLoadingMore || !hasMore) return
 
     setIsLoadingMore(true)
     const container = messagesContainerRef.current
@@ -155,17 +105,14 @@ export function ChatPanel({
       const oldestMessage = messages[0]
       if (!oldestMessage) return
 
-      const { data: olderMsgs, error: fetchErr } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversation.id)
-        .lt('created_at', oldestMessage.created_at)
-        .order('created_at', { ascending: false })
-        .limit(PAGE_SIZE + 1)
+      const response = await fetch(
+        `/api/chat/messages?conversationId=${encodeURIComponent(conversation.id)}&before=${encodeURIComponent(oldestMessage.created_at)}&limit=${PAGE_SIZE + 1}`
+      )
+      if (!response.ok) throw new Error('Failed to load older messages')
+      const data = await response.json()
+      const olderMsgs = data.messages || []
 
-      if (fetchErr) throw fetchErr
-
-      if (olderMsgs && olderMsgs.length > 0) {
+      if (olderMsgs.length > 0) {
         const hasMoreMessages = olderMsgs.length > PAGE_SIZE
         setHasMore(hasMoreMessages)
         const toAdd = hasMoreMessages ? olderMsgs.slice(0, PAGE_SIZE) : olderMsgs
@@ -224,60 +171,24 @@ export function ChatPanel({
         return
       }
 
-      // Real mode - use Supabase
-      const sb = supabase!
-      
+      // Real mode - use server API (service role)
       try {
         setIsLoading(true)
         setError(null)
 
-        // Try to find existing conversation (using resolved auth UUID)
-        const { data: existingConv, error: fetchError } = await sb
-          .from('conversations')
-          .select('*')
-          .eq('user_id', effectiveUserId)
-          .eq('agent_id', agentId)
-          .single()
+        const response = await fetch(
+          `/api/chat/conversations?shortId=${encodeURIComponent(userId!)}&agentId=${encodeURIComponent(agentId)}`
+        )
+        if (!response.ok) throw new Error('Failed to load conversation')
+        const data = await response.json()
 
-        if (fetchError && fetchError.code !== 'PGRST116') {
-          throw fetchError
-        }
-
-        let conv = existingConv
-
-        // Create new conversation if none exists
-        if (!conv) {
-          const { data: newConv, error: createError } = await sb
-            .from('conversations')
-            .insert({
-              user_id: effectiveUserId,
-              agent_id: agentId,
-              title: `Chat with ${agentName}`
-            })
-            .select()
-            .single()
-
-          if (createError) throw createError
-          conv = newConv
-        }
-
+        const conv = data.conversation
         setConversation(conv)
 
-        // Load last PAGE_SIZE messages from Supabase (newest first, then reverse)
-        const { data: msgs, error: msgsError } = await sb
-          .from('messages')
-          .select('*')
-          .eq('conversation_id', conv.id)
-          .order('created_at', { ascending: false })
-          .limit(PAGE_SIZE + 1)
-
-        if (msgsError) throw msgsError
-
-        if (msgs && msgs.length > 0) {
-          const hasMoreMessages = msgs.length > PAGE_SIZE
-          setHasMore(hasMoreMessages)
-          const displayMsgs = hasMoreMessages ? msgs.slice(0, PAGE_SIZE) : msgs
-          setMessages(displayMsgs.reverse())
+        const msgs = data.messages || []
+        if (msgs.length > 0) {
+          setHasMore(Boolean(data.hasMore))
+          setMessages(msgs)
         } else if (syncFromGateway && gatewayConnected) {
           // If no local messages but sync enabled, try to fetch from OpenClaw
           const gatewayMessages = await fetchGatewayHistory()
@@ -322,7 +233,7 @@ export function ChatPanel({
     }
 
     initConversation()
-  }, [agentId, agentName, effectiveUserId, isDemoMode, gatewayConnected, syncFromGateway, fetchGatewayHistory])
+  }, [agentId, agentName, userId, isDemoMode, gatewayConnected, syncFromGateway, fetchGatewayHistory])
 
   // Parse SSE stream from OpenClaw gateway
   const parseSSEStream = async (
@@ -446,22 +357,24 @@ export function ChatPanel({
     setError(null)
 
     try {
-      // Save user message to Supabase (if connected)
-      if (!isDemoMode && supabase && conversation) {
-        const sb = supabase!
-        const { data: savedMsg, error: saveError } = await sb
-          .from('messages')
-          .insert({
-            conversation_id: conversation.id,
+      // Save user message via API (service role)
+      if (!isDemoMode && conversation) {
+        const response = await fetch('/api/chat/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: conversation.id,
             role: 'user',
             content,
             attachments
           })
-          .select()
-          .single()
-
-        if (saveError) throw saveError
-        setMessages(prev => prev.map(m => m.id === userMessage.id ? savedMsg : m))
+        })
+        if (!response.ok) throw new Error('Failed to save user message')
+        const data = await response.json()
+        const savedMsg = data.message
+        if (savedMsg) {
+          setMessages(prev => prev.map(m => m.id === userMessage.id ? savedMsg : m))
+        }
       }
 
       // Try to send to gateway
@@ -490,22 +403,24 @@ export function ChatPanel({
         created_at: new Date().toISOString()
       }
 
-      // Save assistant message to Supabase (if connected)
-      if (!isDemoMode && supabase && conversation) {
-        const sb = supabase!
-        const { data: savedResponse, error: responseError } = await sb
-          .from('messages')
-          .insert({
-            conversation_id: conversation.id,
+      // Save assistant message via API (service role)
+      if (!isDemoMode && conversation) {
+        const response = await fetch('/api/chat/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            conversationId: conversation.id,
             role: 'assistant',
             content: responseContent,
             attachments: []
           })
-          .select()
-          .single()
-
-        if (responseError) throw responseError
-        setMessages(prev => [...prev, savedResponse])
+        })
+        if (!response.ok) throw new Error('Failed to save assistant message')
+        const data = await response.json()
+        const savedResponse = data.message
+        if (savedResponse) {
+          setMessages(prev => [...prev, savedResponse])
+        }
       } else {
         setMessages(prev => [...prev, assistantMessage])
       }
