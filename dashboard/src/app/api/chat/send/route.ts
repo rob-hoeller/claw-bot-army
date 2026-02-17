@@ -29,7 +29,7 @@ interface ChatMessage {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { message, agentId, sessionKey, history = [], stream = true } = body
+    const { message, agentId, sessionKey, history = [], stream = true, attachments = [] } = body
 
     if (!message || !agentId) {
       return NextResponse.json(
@@ -46,14 +46,21 @@ export async function POST(request: NextRequest) {
     }
 
     // Build messages array with history + new message
-    const messages: ChatMessage[] = [
-      // Include prior conversation history (last N messages)
+    // For the new message, use multimodal content if attachments present
+    const userContent: string | Array<{ type: string; text?: string; image_url?: { url: string } }> =
+      attachments.length > 0
+        ? [
+            { type: 'text', text: message },
+            ...attachments.map((a: { type: string; image_url?: { url: string } }) => a),
+          ]
+        : message
+
+    const messages: (ChatMessage | { role: string; content: typeof userContent })[] = [
       ...history.slice(-20).map((msg: { role: string; content: string }) => ({
         role: msg.role as 'user' | 'assistant',
         content: msg.content,
       })),
-      // Add the new user message
-      { role: 'user' as const, content: message },
+      { role: 'user' as const, content: userContent },
     ]
 
     // Build request to OpenClaw Gateway

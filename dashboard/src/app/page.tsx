@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import { useHashRouter } from "@/hooks/useHashRouter"
 import { motion, AnimatePresence } from "framer-motion"
 import { supabase } from "@/lib/supabase"
 import { User } from "@supabase/supabase-js"
@@ -32,7 +33,7 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(Boolean(supabase))
   const [twoFactorEmail, setTwoFactorEmail] = useState<string | null>(null)
-  const [currentPage, setCurrentPage] = useState("dashboard")
+  const { page: currentPage, itemId: deepLinkItemId, navigate: hashNavigate, setItemId: setDeepLinkItemId } = useHashRouter("dashboard")
 
   const isConfigured = Boolean(supabase)
 
@@ -71,7 +72,7 @@ export default function Home() {
 
   const handleSignOut = async () => {
     await supabase?.auth.signOut()
-    setCurrentPage("dashboard")
+    hashNavigate("dashboard")
   }
 
   // Loading state
@@ -150,9 +151,9 @@ export default function Home() {
           </div>
         )
       case "agents":
-        return <AgentsPage userEmail={user?.email} userMetadata={user?.user_metadata} />
+        return <AgentsPage userEmail={user?.email} userMetadata={user?.user_metadata} supabaseUserId={user?.id} />
       case "features":
-        return <FeatureBoard />
+        return <FeatureBoard deepLinkItemId={deepLinkItemId} onItemChange={setDeepLinkItemId} />
       case "monitoring":
         return <MonitoringPage />
       case "usage":
@@ -178,9 +179,9 @@ export default function Home() {
     <AppShell
       user={user}
       currentPage={currentPage}
-      onNavigate={setCurrentPage}
+      onNavigate={(page) => hashNavigate(page)}
       onSignOut={handleSignOut}
-      onSettingsClick={() => setCurrentPage("settings")}
+      onSettingsClick={() => hashNavigate("settings")}
     >
       <AnimatePresence mode="wait">
         <motion.div
