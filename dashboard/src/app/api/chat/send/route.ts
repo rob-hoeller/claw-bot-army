@@ -206,15 +206,12 @@ export async function POST(request: NextRequest) {
       ? await buildResponsesBody(message || '', attachments, agentId, history)
       : buildChatCompletionsBody(message || '', agentId, history)
 
-    // Note: /v1/responses with x-openclaw-session-key causes hangs/empty responses.
-    // Only pass session key for /v1/chat/completions. The /v1/responses endpoint
-    // routes via the model field (openclaw:<agentId>) which is sufficient.
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${GATEWAY_TOKEN}`,
       'Content-Type': 'application/json',
       'x-openclaw-agent-id': agentId,
     }
-    if (sessionKey && !useResponses) {
+    if (sessionKey) {
       headers['x-openclaw-session-key'] = sessionKey
     }
 

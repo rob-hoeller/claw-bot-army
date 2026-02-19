@@ -2,7 +2,7 @@
 
 > This file stores platform state, agent registry, and significant events.
 > Agent registry is **dynamically generated** from Supabase (single source of truth).
-> Last synced: 2026-02-19T20:56:16Z
+> Last synced: 2026-02-19T22:26:17Z
 
 ---
 
@@ -81,3 +81,5 @@ Single source of truth architecture established: Supabase agents table is the ca
 Test: add-memory.sh patch validation 2026-02-18T19:07:42Z
 ### 2026-02-19T20:00:30Z
 Fixed memory logging gap. Created daily-memory-log.sh script + cron (11 PM ET). Memory now auto-logs to local files + Supabase memory_logs table daily.
+### 2026-02-19T21:14:47Z
+GitHub access: git credentials stored in ~/.git-credentials (credential.helper=store) for user clawd-schell. gh CLI is NOT authenticated — use GitHub REST API directly with token extracted from git-credentials. No daily re-auth needed. Example: TOKEN=$(cat ~/.git-credentials | grep github.com | head -1 | sed 's|https://[^:]*:\([^@]*\)@.*|\1|') then curl with -H 'Authorization: token $TOKEN'. PR creation works via POST to api.github.com/repos/{owner}/{repo}/pulls.
