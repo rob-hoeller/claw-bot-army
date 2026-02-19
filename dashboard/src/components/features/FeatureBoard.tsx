@@ -488,7 +488,7 @@ function FeatureDetailPanel({
   const [newMessage, setNewMessage] = useState("")
   const [loadingMessages, setLoadingMessages] = useState(true)
   const [sending, setSending] = useState(false)
-  const [activeTab, setActiveTab] = useState<'details' | 'chat'>('chat')
+  const [activeTab, setActiveTab] = useState<'details' | 'chat'>('details')
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const priority = priorityConfig[feature.priority]
@@ -624,17 +624,17 @@ function FeatureDetailPanel({
         {/* Tabs */}
         <div className="flex gap-1 mt-2">
           <button
+            onClick={() => setActiveTab('details')}
+            className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'details' ? "bg-white/10 text-white/80" : "text-white/40 hover:text-white/60")}
+          >
+            Details
+          </button>
+          <button
             onClick={() => setActiveTab('chat')}
             className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'chat' ? "bg-purple-500/20 text-purple-300" : "text-white/40 hover:text-white/60")}
           >
             <MessageSquare className="h-3 w-3 inline mr-1" />
             Chat {messages.length > 0 && `(${messages.length})`}
-          </button>
-          <button
-            onClick={() => setActiveTab('details')}
-            className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'details' ? "bg-white/10 text-white/80" : "text-white/40 hover:text-white/60")}
-          >
-            Details
           </button>
         </div>
       </div>
