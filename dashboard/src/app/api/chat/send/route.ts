@@ -3,9 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 /**
  * POST /api/chat/send
  * 
- * Forwards messages to OpenClaw Gateway's Chat Completions API.
- * Supports streaming responses via SSE.
- * Supports multimodal messages (text + images).
+ * Forwards messages to OpenClaw Gateway.
+ * - Text-only: uses /v1/chat/completions (OpenAI Chat format)
+ * - With images: uses /v1/responses (OpenAI Responses format, supports input_image)
  * 
  * Request body:
  * {
@@ -21,65 +21,11 @@ import { NextRequest, NextResponse } from 'next/server'
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
 
-type ContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } }
-
-interface ChatMessage {
-  role: 'user' | 'assistant' | 'system'
-  content: string | ContentPart[]
-}
-
 interface AttachmentInput {
   type: string
   url: string
   name?: string
   mimeType?: string
-}
-
-/**
- * Build multimodal content array from text + attachments.
- * If no image attachments, returns plain string for efficiency.
- */
-function buildUserContent(
-  text: string,
-  attachments: AttachmentInput[] = []
-): string | ContentPart[] {
-  const imageAttachments = attachments.filter(
-    a => a.type === 'image' || a.mimeType?.startsWith('image/')
-  )
-
-  // No images — keep it simple (plain string)
-  if (imageAttachments.length === 0) {
-    return text
-  }
-
-  // Build multimodal content array
-  const parts: ContentPart[] = []
-
-  // Add image parts first so the model "sees" them in context
-  for (const img of imageAttachments) {
-    if (img.url.startsWith('data:')) {
-      // Base64 data URL — send inline
-      parts.push({
-        type: 'image_url',
-        image_url: { url: img.url },
-      })
-    } else {
-      // Regular URL (Supabase Storage etc.)
-      parts.push({
-        type: 'image_url',
-        image_url: { url: img.url },
-      })
-    }
-  }
-
-  // Add text part (even if empty, to signal user intent)
-  if (text) {
-    parts.push({ type: 'text', text })
-  }
-
-  return parts
 }
 
 export async function POST(request: NextRequest) {
@@ -94,9 +40,8 @@ export async function POST(request: NextRequest) {
       stream = true,
     } = body
 
-    // Debug: log what we received
     console.log('[Chat Send] message:', message?.substring(0, 100))
-    console.log('[Chat Send] attachments:', attachments.length, attachments.map((a: AttachmentInput) => ({ type: a.type, urlPrefix: a.url?.substring(0, 80), mimeType: a.mimeType })))
+    console.log('[Chat Send] attachments:', attachments.length)
 
     if (!message && attachments.length === 0) {
       return NextResponse.json(
@@ -119,73 +64,29 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Build messages array with history + new message
-    const messages: ChatMessage[] = [
-      // Include prior conversation history (last N messages)
-      ...history.slice(-20).map((msg: { role: string; content: string }) => ({
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-      })),
-      // Add the new user message (with image attachments if any)
-      {
-        role: 'user' as const,
-        content: buildUserContent(message || '', attachments),
-      },
-    ]
+    const imageAttachments = (attachments as AttachmentInput[]).filter(
+      (a: AttachmentInput) => a.type === 'image' || a.mimeType?.startsWith('image/')
+    )
 
-    // Debug: log what we're sending to Gateway
-    const lastMsg = messages[messages.length - 1]
-    console.log('[Chat Send] Gateway content type:', typeof lastMsg.content === 'string' ? 'string' : `array[${(lastMsg.content as ContentPart[]).length}]`)
-    if (Array.isArray(lastMsg.content)) {
-      console.log('[Chat Send] Content parts:', (lastMsg.content as ContentPart[]).map(p => p.type))
-    }
-
-    // Build request to OpenClaw Gateway
-    const gatewayResponse = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-        'Content-Type': 'application/json',
-        'x-openclaw-agent-id': agentId,
-        ...(sessionKey && { 'x-openclaw-session-key': sessionKey }),
-      },
-      body: JSON.stringify({
-        model: `openclaw:${agentId}`,
-        messages,
+    // If we have images, use /v1/responses which supports input_image
+    if (imageAttachments.length > 0) {
+      return handleWithResponses({
+        message: message || '',
+        agentId,
+        sessionKey,
+        history,
+        imageAttachments,
         stream,
-      }),
-    })
-
-    if (!gatewayResponse.ok) {
-      const errorText = await gatewayResponse.text()
-      console.error('[Gateway Error]', gatewayResponse.status, errorText)
-      return NextResponse.json(
-        { error: `Gateway error: ${gatewayResponse.status}` },
-        { status: gatewayResponse.status }
-      )
-    }
-
-    // Handle streaming response
-    if (stream && gatewayResponse.body) {
-      const readable = gatewayResponse.body
-
-      return new Response(readable, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-        },
       })
     }
 
-    // Handle non-streaming response
-    const data = await gatewayResponse.json()
-    const content = data.choices?.[0]?.message?.content || ''
-
-    return NextResponse.json({
-      content,
+    // Text-only: use /v1/chat/completions
+    return handleWithChatCompletions({
+      message: message || '',
       agentId,
-      sessionKey: sessionKey || 'default',
+      sessionKey,
+      history,
+      stream,
     })
 
   } catch (error) {
@@ -195,4 +96,198 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
+}
+
+/**
+ * Send via /v1/responses (supports images via input_image)
+ */
+async function handleWithResponses(opts: {
+  message: string
+  agentId: string
+  sessionKey?: string
+  history: Array<{ role: string; content: string }>
+  imageAttachments: AttachmentInput[]
+  stream: boolean
+}) {
+  const { message, agentId, sessionKey, history, imageAttachments, stream } = opts
+
+  // Build input array in OpenAI Responses format
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const input: any[] = []
+
+  // Add conversation history
+  for (const msg of history.slice(-20)) {
+    input.push({
+      type: 'message',
+      role: msg.role === 'assistant' ? 'assistant' : 'user',
+      content: msg.content,
+    })
+  }
+
+  // Build the user message with image parts
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const contentParts: any[] = []
+
+  // Add images first
+  for (const img of imageAttachments) {
+    if (img.url.startsWith('data:')) {
+      // Base64 data URL — extract mime and data
+      const match = img.url.match(/^data:([^;]+);base64,(.+)$/)
+      if (match) {
+        contentParts.push({
+          type: 'input_image',
+          source: {
+            type: 'base64',
+            media_type: match[1],
+            data: match[2],
+          },
+        })
+      }
+    } else {
+      // Regular URL
+      contentParts.push({
+        type: 'input_image',
+        source: {
+          type: 'url',
+          url: img.url,
+        },
+      })
+    }
+  }
+
+  // Add text
+  if (message) {
+    contentParts.push({
+      type: 'input_text',
+      text: message,
+    })
+  } else {
+    contentParts.push({
+      type: 'input_text',
+      text: 'Describe this image.',
+    })
+  }
+
+  input.push({
+    type: 'message',
+    role: 'user',
+    content: contentParts,
+  })
+
+  console.log('[Chat Send] Using /v1/responses with', imageAttachments.length, 'images')
+  console.log('[Chat Send] Content parts:', contentParts.map(p => p.type))
+
+  const gatewayResponse = await fetch(`${GATEWAY_URL}/v1/responses`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+      'Content-Type': 'application/json',
+      'x-openclaw-agent-id': agentId,
+      ...(sessionKey && { 'x-openclaw-session-key': sessionKey }),
+    },
+    body: JSON.stringify({
+      model: `openclaw:${agentId}`,
+      input,
+      stream,
+    }),
+  })
+
+  if (!gatewayResponse.ok) {
+    const errorText = await gatewayResponse.text()
+    console.error('[Gateway Responses Error]', gatewayResponse.status, errorText)
+    return NextResponse.json(
+      { error: `Gateway error: ${gatewayResponse.status}` },
+      { status: gatewayResponse.status }
+    )
+  }
+
+  // Handle streaming response
+  if (stream && gatewayResponse.body) {
+    // /v1/responses uses SSE format too
+    return new Response(gatewayResponse.body, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    })
+  }
+
+  // Non-streaming
+  const data = await gatewayResponse.json()
+  const content = data.output?.[0]?.content?.[0]?.text || 
+                  data.choices?.[0]?.message?.content || ''
+
+  return NextResponse.json({
+    content,
+    agentId,
+    sessionKey: sessionKey || 'default',
+  })
+}
+
+/**
+ * Send via /v1/chat/completions (text-only, more efficient)
+ */
+async function handleWithChatCompletions(opts: {
+  message: string
+  agentId: string
+  sessionKey?: string
+  history: Array<{ role: string; content: string }>
+  stream: boolean
+}) {
+  const { message, agentId, sessionKey, history, stream } = opts
+
+  const messages = [
+    ...history.slice(-20).map((msg: { role: string; content: string }) => ({
+      role: msg.role as 'user' | 'assistant',
+      content: msg.content,
+    })),
+    {
+      role: 'user' as const,
+      content: message,
+    },
+  ]
+
+  const gatewayResponse = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+      'Content-Type': 'application/json',
+      'x-openclaw-agent-id': agentId,
+      ...(sessionKey && { 'x-openclaw-session-key': sessionKey }),
+    },
+    body: JSON.stringify({
+      model: `openclaw:${agentId}`,
+      messages,
+      stream,
+    }),
+  })
+
+  if (!gatewayResponse.ok) {
+    const errorText = await gatewayResponse.text()
+    console.error('[Gateway Error]', gatewayResponse.status, errorText)
+    return NextResponse.json(
+      { error: `Gateway error: ${gatewayResponse.status}` },
+      { status: gatewayResponse.status }
+    )
+  }
+
+  if (stream && gatewayResponse.body) {
+    return new Response(gatewayResponse.body, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    })
+  }
+
+  const data = await gatewayResponse.json()
+  const content = data.choices?.[0]?.message?.content || ''
+
+  return NextResponse.json({
+    content,
+    agentId,
+    sessionKey: sessionKey || 'default',
+  })
 }
