@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   DndContext,
@@ -42,6 +42,8 @@ import {
   User,
   GripVertical,
   ChevronDown,
+  Zap,
+  Loader2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -74,6 +76,17 @@ interface Comment {
   author: string
   author_emoji: string
   content: string
+  created_at: string
+}
+
+interface BridgeMessage {
+  id: string
+  work_item_id: string
+  sender_type: 'user' | 'agent' | 'orchestrator'
+  sender_id: string
+  sender_name: string
+  content: string
+  metadata: Record<string, unknown>
   created_at: string
 }
 
@@ -428,7 +441,38 @@ function CreateFeaturePanel({
   )
 }
 
-// ─── Feature Detail Panel ────────────────────────────────────────
+// ─── Sender Config ───────────────────────────────────────────────
+const senderConfig = {
+  user: { color: 'bg-blue-500/20 text-blue-300 border-blue-500/30', emoji: '👤', align: 'right' as const },
+  agent: { color: 'bg-purple-500/20 text-purple-300 border-purple-500/30', emoji: '🤖', align: 'left' as const },
+  orchestrator: { color: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30', emoji: '🧠', align: 'left' as const },
+}
+
+// ─── Bridge Chat Message ─────────────────────────────────────────
+function BridgeChatMessage({ msg, agents }: { msg: BridgeMessage; agents: Agent[] }) {
+  const config = senderConfig[msg.sender_type] || senderConfig.agent
+  const agent = agents.find(a => a.id === msg.sender_id)
+  const emoji = agent?.emoji || config.emoji
+  const isUser = msg.sender_type === 'user'
+
+  return (
+    <div className={cn("flex gap-2", isUser ? "flex-row-reverse" : "flex-row")}>
+      <span className="text-sm flex-shrink-0 mt-0.5">{emoji}</span>
+      <div className={cn("max-w-[80%] rounded-lg px-2.5 py-1.5", isUser ? "bg-blue-600/20 border border-blue-500/20" : msg.sender_type === 'orchestrator' ? "bg-yellow-500/10 border border-yellow-500/15" : "bg-white/[0.04] border border-white/10")}>
+        <div className={cn("flex items-baseline gap-2 mb-0.5", isUser && "flex-row-reverse")}>
+          <span className="text-[10px] font-medium text-white/70">{msg.sender_name}</span>
+          <Badge className={cn("text-[8px] px-1 py-0 h-3.5 border", config.color)}>{msg.sender_type}</Badge>
+          <span className="text-[9px] text-white/25">
+            {new Date(msg.created_at).toLocaleString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        </div>
+        <p className={cn("text-[11px] text-white/70 whitespace-pre-wrap", isUser && "text-right")}>{msg.content}</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Feature Detail Panel (with Live Bridge Chat) ────────────────
 function FeatureDetailPanel({
   feature,
   agents,
@@ -440,40 +484,119 @@ function FeatureDetailPanel({
   onClose: () => void
   onStatusChange: (status: Feature['status']) => void
 }) {
-  const [newComment, setNewComment] = useState("")
-  const [comments, setComments] = useState<Comment[]>([])
-  const [loadingComments, setLoadingComments] = useState(true)
+  const [messages, setMessages] = useState<BridgeMessage[]>([])
+  const [newMessage, setNewMessage] = useState("")
+  const [loadingMessages, setLoadingMessages] = useState(true)
+  const [sending, setSending] = useState(false)
+  const [activeTab, setActiveTab] = useState<'details' | 'chat'>('details')
+  const chatEndRef = useRef<HTMLDivElement>(null)
 
   const priority = priorityConfig[feature.priority]
   const assignedAgent = agents.find(a => a.id === feature.assigned_to)
   const requestedAgent = agents.find(a => a.id === feature.requested_by)
 
-  useEffect(() => {
-    async function loadComments() {
-      if (!supabase) { setComments(demoComments); setLoadingComments(false); return }
-      try {
-        const { data, error } = await supabase.from('feature_comments').select('*').eq('feature_id', feature.id).order('created_at', { ascending: true })
-        if (error) throw error
-        setComments((data || []).map((c: { id: string; agent_id: string; message: string; created_at: string }) => {
-          const agent = agents.find(a => a.id === c.agent_id)
-          return { id: c.id, author: c.agent_id, author_emoji: agent?.emoji || '🤖', content: c.message, created_at: c.created_at }
-        }))
-      } catch { setComments(demoComments) }
-      finally { setLoadingComments(false) }
-    }
-    loadComments()
-  }, [feature.id, agents])
+  // Scroll to bottom of chat
+  const scrollToBottom = useCallback(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [])
 
-  const handleSendComment = async () => {
-    if (!newComment.trim()) return
-    if (supabase) {
+  // Load messages from bridge API
+  useEffect(() => {
+    async function loadMessages() {
       try {
-        const { data, error } = await supabase.from('feature_comments').insert({ feature_id: feature.id, agent_id: 'Lance', message: newComment.trim(), comment_type: 'message' }).select().single()
-        if (error) throw error
-        setComments(prev => [...prev, { id: data.id, author: 'Lance', author_emoji: '👤', content: data.message, created_at: data.created_at }])
-      } catch (err) { console.error('Error saving comment:', err) }
+        const res = await fetch(`/api/work-items/${feature.id}/messages`)
+        if (!res.ok) throw new Error('Failed to load messages')
+        const data = await res.json()
+        setMessages(data)
+      } catch (err) {
+        console.error('Error loading bridge messages:', err)
+        setMessages([])
+      } finally {
+        setLoadingMessages(false)
+      }
     }
-    setNewComment("")
+    loadMessages()
+  }, [feature.id])
+
+  // Realtime subscription on work_item_messages
+  useEffect(() => {
+    if (!supabase) return
+    const channel = supabase
+      .channel(`bridge-${feature.id}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'work_item_messages',
+        filter: `work_item_id=eq.${feature.id}`,
+      }, (payload) => {
+        const newMsg = payload.new as BridgeMessage
+        setMessages(prev => {
+          // Dedupe by id
+          if (prev.some(m => m.id === newMsg.id)) return prev
+          return [...prev, newMsg]
+        })
+      })
+      .subscribe()
+
+    return () => { supabase!.removeChannel(channel) }
+  }, [feature.id])
+
+  // Auto-scroll when new messages arrive
+  useEffect(() => {
+    if (activeTab === 'chat') scrollToBottom()
+  }, [messages, activeTab, scrollToBottom])
+
+  // Send message through bridge
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || sending) return
+    const content = newMessage.trim()
+    setNewMessage("")
+    setSending(true)
+
+    // Optimistic user message
+    const optimistic: BridgeMessage = {
+      id: `opt-${Date.now()}`,
+      work_item_id: feature.id,
+      sender_type: 'user',
+      sender_id: 'Lance',
+      sender_name: 'Lance',
+      content,
+      metadata: {},
+      created_at: new Date().toISOString(),
+    }
+    setMessages(prev => [...prev, optimistic])
+
+    try {
+      // If this is the first message, include feature context
+      const isFirst = messages.length === 0
+      const contextPrefix = isFirst
+        ? `[Feature: "${feature.title}"${feature.description ? ` — ${feature.description}` : ''}${feature.acceptance_criteria ? `\nAcceptance Criteria: ${feature.acceptance_criteria}` : ''}]\n\n`
+        : ''
+
+      const res = await fetch(`/api/work-items/${feature.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender_type: 'user',
+          sender_id: 'Lance',
+          sender_name: 'Lance',
+          content: contextPrefix + content,
+        }),
+      })
+
+      if (!res.ok) throw new Error('Failed to send message')
+
+      // Replace optimistic message with real one
+      const saved = await res.json()
+      setMessages(prev => prev.map(m => m.id === optimistic.id ? saved : m))
+    } catch (err) {
+      console.error('Error sending bridge message:', err)
+      // Remove optimistic message on error
+      setMessages(prev => prev.filter(m => m.id !== optimistic.id))
+      setNewMessage(content) // Restore the message
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -488,101 +611,148 @@ function FeatureDetailPanel({
               <StatusDropdown currentStatus={feature.status} onStatusChange={onStatusChange} />
             </div>
             <h2 className="text-sm font-semibold text-white leading-tight">{feature.title}</h2>
+            {assignedAgent && (
+              <div className="flex items-center gap-1 mt-1">
+                <Zap className="h-2.5 w-2.5 text-purple-400" />
+                <span className="text-[10px] text-purple-400">Live Bridge → {assignedAgent.emoji} {assignedAgent.name}</span>
+              </div>
+            )}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} className="h-7 w-7 flex-shrink-0"><X className="h-4 w-4" /></Button>
         </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 mt-2">
+          <button
+            onClick={() => setActiveTab('details')}
+            className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'details' ? "bg-white/10 text-white/80" : "text-white/40 hover:text-white/60")}
+          >
+            Details
+          </button>
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'chat' ? "bg-purple-500/20 text-purple-300" : "text-white/40 hover:text-white/60")}
+          >
+            <MessageSquare className="h-3 w-3 inline mr-1" />
+            Chat {messages.length > 0 && `(${messages.length})`}
+          </button>
+        </div>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        {feature.description && (
-          <div className="p-3 border-b border-white/5"><p className="text-xs text-white/70">{feature.description}</p></div>
-        )}
+      {/* Tab Content */}
+      {activeTab === 'details' ? (
+        <div className="flex-1 overflow-y-auto">
+          {feature.description && (
+            <div className="p-3 border-b border-white/5"><p className="text-xs text-white/70">{feature.description}</p></div>
+          )}
 
-        <div className="p-3 border-b border-white/5 space-y-2">
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
-            <div className="flex items-center gap-1.5">
-              <User className="h-3 w-3 text-white/30" /><span className="text-white/50">Requested:</span>
-              {requestedAgent ? <span className="text-white/80">{requestedAgent.emoji} {requestedAgent.id}</span> : <span className="text-white/40">—</span>}
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Bot className="h-3 w-3 text-white/30" /><span className="text-white/50">Assigned:</span>
-              {assignedAgent ? <span className="text-white/80">{assignedAgent.emoji} {assignedAgent.id}</span> : <span className="text-white/40">Unassigned</span>}
-            </div>
-            {feature.approved_by && (
+          <div className="p-3 border-b border-white/5 space-y-2">
+            <div className="grid grid-cols-2 gap-2 text-[11px]">
               <div className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3 w-3 text-green-400/50" /><span className="text-white/50">Approved:</span><span className="text-white/80">{feature.approved_by}</span>
+                <User className="h-3 w-3 text-white/30" /><span className="text-white/50">Requested:</span>
+                {requestedAgent ? <span className="text-white/80">{requestedAgent.emoji} {requestedAgent.id}</span> : <span className="text-white/40">—</span>}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Bot className="h-3 w-3 text-white/30" /><span className="text-white/50">Assigned:</span>
+                {assignedAgent ? <span className="text-white/80">{assignedAgent.emoji} {assignedAgent.id}</span> : <span className="text-white/40">Unassigned</span>}
+              </div>
+              {feature.approved_by && (
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3 w-3 text-green-400/50" /><span className="text-white/50">Approved:</span><span className="text-white/80">{feature.approved_by}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5">
+                <Calendar className="h-3 w-3 text-white/30" /><span className="text-white/50">Created:</span><span className="text-white/80">{new Date(feature.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>
+            {feature.labels && feature.labels.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {feature.labels.map((label) => (<span key={label} className="px-1.5 py-0.5 text-[9px] rounded bg-white/5 text-white/50">{label}</span>))}
               </div>
             )}
-            <div className="flex items-center gap-1.5">
-              <Calendar className="h-3 w-3 text-white/30" /><span className="text-white/50">Created:</span><span className="text-white/80">{new Date(feature.created_at).toLocaleDateString()}</span>
-            </div>
           </div>
-          {feature.labels && feature.labels.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {feature.labels.map((label) => (<span key={label} className="px-1.5 py-0.5 text-[9px] rounded bg-white/5 text-white/50">{label}</span>))}
+
+          <div className="p-3 border-b border-white/5 space-y-1.5">
+            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Links</div>
+            {feature.branch_name && (
+              <div className="flex items-center gap-2 text-[11px]">
+                <Link2 className="h-3 w-3 text-white/30" /><span className="text-white/50">Branch:</span>
+                <code className="text-purple-400 bg-purple-400/10 px-1 rounded text-[10px]">{feature.branch_name}</code>
+              </div>
+            )}
+            {feature.pr_url && (
+              <a href={feature.pr_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[11px] text-purple-400 hover:text-purple-300">
+                <GitPullRequest className="h-3 w-3" /><span>PR #{feature.pr_number}</span>
+                <Badge className={cn("text-[9px] px-1 py-0 h-4", feature.pr_status === 'merged' ? 'bg-green-500/20 text-green-400' : 'bg-purple-500/20 text-purple-400')}>{feature.pr_status}</Badge>
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+            )}
+            {!feature.branch_name && !feature.pr_url && <p className="text-[11px] text-white/30">No links yet</p>}
+          </div>
+
+          {feature.acceptance_criteria && (
+            <div className="p-3 border-b border-white/5">
+              <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Acceptance Criteria</div>
+              <pre className="text-[11px] text-white/70 whitespace-pre-wrap font-mono">{feature.acceptance_criteria}</pre>
             </div>
           )}
         </div>
-
-        <div className="p-3 border-b border-white/5 space-y-1.5">
-          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Links</div>
-          {feature.branch_name && (
-            <div className="flex items-center gap-2 text-[11px]">
-              <Link2 className="h-3 w-3 text-white/30" /><span className="text-white/50">Branch:</span>
-              <code className="text-purple-400 bg-purple-400/10 px-1 rounded text-[10px]">{feature.branch_name}</code>
+      ) : (
+        /* Chat Tab */
+        <div className="flex-1 overflow-y-auto p-3">
+          {loadingMessages ? (
+            <div className="flex items-center justify-center h-20">
+              <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
+              <span className="text-[10px] text-white/30 ml-2">Loading chat...</span>
+            </div>
+          ) : messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-32 text-center">
+              <Zap className="h-6 w-6 text-purple-400/40 mb-2" />
+              <p className="text-[11px] text-white/40">No messages yet</p>
+              <p className="text-[10px] text-white/25 mt-1">
+                {assignedAgent
+                  ? `Send a message to start a conversation with ${assignedAgent.emoji} ${assignedAgent.name}`
+                  : 'Assign an agent to enable the Live Bridge'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {messages.map((msg) => (
+                <BridgeChatMessage key={msg.id} msg={msg} agents={agents} />
+              ))}
+              <div ref={chatEndRef} />
             </div>
           )}
-          {feature.pr_url && (
-            <a href={feature.pr_url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[11px] text-purple-400 hover:text-purple-300">
-              <GitPullRequest className="h-3 w-3" /><span>PR #{feature.pr_number}</span>
-              <Badge className={cn("text-[9px] px-1 py-0 h-4", feature.pr_status === 'merged' ? 'bg-green-500/20 text-green-400' : 'bg-purple-500/20 text-purple-400')}>{feature.pr_status}</Badge>
-              <ExternalLink className="h-2.5 w-2.5" />
-            </a>
-          )}
-          {!feature.branch_name && !feature.pr_url && <p className="text-[11px] text-white/30">No links yet</p>}
         </div>
+      )}
 
-        {feature.acceptance_criteria && (
-          <div className="p-3 border-b border-white/5">
-            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Acceptance Criteria</div>
-            <pre className="text-[11px] text-white/70 whitespace-pre-wrap font-mono">{feature.acceptance_criteria}</pre>
+      {/* Chat Input (always visible) */}
+      <div className="flex-shrink-0 p-3 border-t border-white/10">
+        {!assignedAgent && activeTab === 'chat' ? (
+          <div className="flex items-center gap-2 text-[10px] text-yellow-400/60">
+            <AlertCircle className="h-3 w-3" />
+            <span>Assign an agent to this feature to enable Live Bridge chat</span>
+          </div>
+        ) : (
+          <div className="flex gap-2">
+            <Input
+              placeholder={activeTab === 'chat' ? `Message ${assignedAgent?.name || 'agent'}...` : 'Switch to Chat tab to message'}
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
+              disabled={activeTab !== 'chat' || sending}
+              className="flex-1 h-8 text-xs bg-white/5 border-white/10"
+            />
+            <Button
+              size="sm"
+              onClick={handleSendMessage}
+              disabled={!newMessage.trim() || sending || activeTab !== 'chat'}
+              className="h-8 w-8 p-0"
+            >
+              {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+            </Button>
           </div>
         )}
-
-        <div className="p-3">
-          <div className="text-[10px] text-white/40 uppercase tracking-wider mb-2">Activity</div>
-          <div className="space-y-2">
-            {loadingComments ? (
-              <div className="flex items-center gap-2 py-2">
-                <div className="h-3 w-3 border border-white/20 border-t-purple-400 rounded-full animate-spin" />
-                <span className="text-[10px] text-white/30">Loading...</span>
-              </div>
-            ) : comments.length === 0 ? (
-              <p className="text-[11px] text-white/30 py-2">No activity yet</p>
-            ) : (
-              comments.map((comment) => (
-                <div key={comment.id} className="flex gap-2">
-                  <span className="text-sm flex-shrink-0">{comment.author_emoji}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-[11px] font-medium text-white/80">{comment.author}</span>
-                      <span className="text-[9px] text-white/30">{new Date(comment.created_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <p className="text-[11px] text-white/60 mt-0.5 whitespace-pre-wrap">{comment.content}</p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-shrink-0 p-3 border-t border-white/10">
-        <div className="flex gap-2">
-          <Input placeholder="Add comment..." value={newComment} onChange={(e) => setNewComment(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendComment()} className="flex-1 h-8 text-xs bg-white/5 border-white/10" />
-          <Button size="sm" onClick={handleSendComment} className="h-8 w-8 p-0"><Send className="h-3 w-3" /></Button>
-        </div>
       </div>
     </motion.div>
   )

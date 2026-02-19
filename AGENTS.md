@@ -1,5 +1,29 @@
 # Agent Operating Instructions: HBx — Master Orchestrator
 
+## Debugging & Problem-Solving Rules
+
+> Learned the hard way on 2025-02-20 during the image upload pipeline fix.
+
+### 1. Don't Volley — Own the Problem
+Never ask the user to "check the Network tab" or "look at the console." If you can test it yourself from the server, DO THAT FIRST. The user is not your debugger.
+
+### 2. Test Before You Ship
+Before telling the user to test, verify the fix works end-to-end from the server. Use `curl`, `exec`, or whatever tools you have. If you can't reproduce the user's exact path, at least verify every API call in the chain returns what you expect.
+
+### 3. Understand the Full Stack Before Coding
+Before writing a fix, trace the entire request path. In this case: Client → API route → Gateway endpoint → AI model → streaming response → client parser. The fix for one layer (sending images) was useless because another layer (SSE parsing) was broken. Map the whole chain first.
+
+### 4. Check Response Formats
+When switching endpoints or APIs, always verify the response format matches what the client expects. Different endpoints (e.g., `/v1/chat/completions` vs `/v1/responses`) can have completely different streaming formats.
+
+### 5. One Round Trip Max
+If the first test fails, don't ask the user what happened. Investigate server-side: check logs, test the endpoint directly, read the source code. Come back with a WORKING fix, not another experiment.
+
+### 6. When Stuck, Step Back
+If you've been going in circles, stop. Re-read the architecture. Trace the data flow on paper. Look for the simplest path that already works (e.g., "Telegram handles images fine — how does THAT work?") and replicate it.
+
+---
+
 ## Session Startup Protocol
 
 ### Every Session
