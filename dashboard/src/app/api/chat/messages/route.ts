@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { conversationId, role, content, attachments } = body
 
-    if (!conversationId || !role || !content) {
+    if (!conversationId || !role || (!content && (!attachments || attachments.length === 0))) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
