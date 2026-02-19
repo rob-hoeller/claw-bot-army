@@ -280,14 +280,18 @@ export async function POST(request: NextRequest) {
       ? await buildResponsesBody(message || '', attachments, agentId, history, systemPrompt)
       : buildChatCompletionsBody(message || '', agentId, history, systemPrompt)
 
+    const headers: Record<string, string> = {
+      'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+      'Content-Type': 'application/json',
+      'x-openclaw-agent-id': agentId,
+    }
+    if (sessionKey) {
+      headers['x-openclaw-session-key'] = sessionKey
+    }
+
     const gatewayResponse = await fetch(endpoint, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-        'Content-Type': 'application/json',
-        'x-openclaw-agent-id': agentId,
-        ...(sessionKey && { 'x-openclaw-session-key': sessionKey }),
-      },
+      headers,
       body: JSON.stringify(requestBody),
     })
 

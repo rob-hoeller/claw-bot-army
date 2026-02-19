@@ -4,6 +4,7 @@
 > Agent registry is **dynamically generated** from Supabase (single source of truth).
 > Last synced: 2026-02-19T21:28:03Z
 
+
 ---
 
 ## Agent Registry
