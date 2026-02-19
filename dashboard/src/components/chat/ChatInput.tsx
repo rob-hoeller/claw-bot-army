@@ -123,6 +123,7 @@ export function ChatInput({
   }
 
   const handleSend = async () => {
+    console.log('[ChatInput] handleSend called. message:', message.substring(0, 50), 'pendingFiles:', pendingFiles.length)
     if (!message.trim() && pendingFiles.length === 0) return
     if (disabled || isUploading) return
 
@@ -149,6 +150,7 @@ export function ChatInput({
       if (pf.preview) URL.revokeObjectURL(pf.preview)
     })
 
+    console.log('[ChatInput] Calling onSend with', attachments.length, 'attachments:', attachments.map(a => ({ type: a.type, urlPrefix: a.url?.substring(0, 60) })))
     onSend(message.trim(), attachments)
     setMessage("")
     setPendingFiles([])
@@ -172,15 +174,23 @@ export function ChatInput({
   // Handle paste for images
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items)
+    console.log('[ChatInput] handlePaste fired! Items:', items.length, items.map(i => i.type))
     const imageItems = items.filter(item => item.type.startsWith('image/'))
+    console.log('[ChatInput] Image items found:', imageItems.length)
     
     if (imageItems.length > 0) {
       e.preventDefault()
       imageItems.forEach(item => {
         const file = item.getAsFile()
+        console.log('[ChatInput] Got file from clipboard:', file?.name, file?.size, file?.type)
         if (file) {
           const preview = URL.createObjectURL(file)
-          setPendingFiles(prev => [...prev, { file, type: 'image', preview }])
+          console.log('[ChatInput] Created preview blob URL:', preview)
+          setPendingFiles(prev => {
+            const updated = [...prev, { file, type: 'image' as const, preview }]
+            console.log('[ChatInput] pendingFiles now:', updated.length)
+            return updated
+          })
         }
       })
     }
