@@ -94,6 +94,10 @@ export async function POST(request: NextRequest) {
       stream = true,
     } = body
 
+    // Debug: log what we received
+    console.log('[Chat Send] message:', message?.substring(0, 100))
+    console.log('[Chat Send] attachments:', attachments.length, attachments.map((a: AttachmentInput) => ({ type: a.type, urlPrefix: a.url?.substring(0, 80), mimeType: a.mimeType })))
+
     if (!message && attachments.length === 0) {
       return NextResponse.json(
         { error: 'Missing required fields: message or attachments' },
@@ -128,6 +132,13 @@ export async function POST(request: NextRequest) {
         content: buildUserContent(message || '', attachments),
       },
     ]
+
+    // Debug: log what we're sending to Gateway
+    const lastMsg = messages[messages.length - 1]
+    console.log('[Chat Send] Gateway content type:', typeof lastMsg.content === 'string' ? 'string' : `array[${(lastMsg.content as ContentPart[]).length}]`)
+    if (Array.isArray(lastMsg.content)) {
+      console.log('[Chat Send] Content parts:', (lastMsg.content as ContentPart[]).map(p => p.type))
+    }
 
     // Build request to OpenClaw Gateway
     const gatewayResponse = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
