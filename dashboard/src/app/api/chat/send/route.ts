@@ -21,6 +21,34 @@ const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024 // 10MB per attachment
 
+/** Fix MIME types when browser sends application/octet-stream */
+const MIME_OVERRIDES: Record<string, string> = {
+  '.md': 'text/markdown', '.markdown': 'text/markdown',
+  '.txt': 'text/plain', '.csv': 'text/csv', '.log': 'text/plain',
+  '.json': 'application/json', '.xml': 'application/xml',
+  '.html': 'text/html', '.htm': 'text/html', '.css': 'text/css',
+  '.js': 'text/javascript', '.ts': 'text/typescript',
+  '.tsx': 'text/typescript', '.jsx': 'text/javascript',
+  '.py': 'text/x-python', '.rb': 'text/x-ruby', '.go': 'text/x-go',
+  '.rs': 'text/x-rust', '.java': 'text/x-java',
+  '.c': 'text/x-c', '.cpp': 'text/x-c++', '.h': 'text/x-c',
+  '.sh': 'text/x-shellscript', '.bash': 'text/x-shellscript',
+  '.yml': 'text/yaml', '.yaml': 'text/yaml', '.toml': 'text/toml',
+  '.ini': 'text/plain', '.env': 'text/plain', '.sql': 'text/x-sql',
+  '.pdf': 'application/pdf',
+  '.doc': 'application/msword',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xls': 'application/vnd.ms-excel',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+}
+
+function resolveMimeType(raw: string, filename?: string): string {
+  if (raw && raw !== 'application/octet-stream') return raw
+  if (!filename) return raw || 'application/octet-stream'
+  const ext = '.' + (filename.split('.').pop()?.toLowerCase() || '')
+  return MIME_OVERRIDES[ext] || raw || 'application/octet-stream'
+}
+
 interface AttachmentInput {
   type: string  // 'image' | 'video' | 'file'
   url: string
@@ -97,7 +125,8 @@ async function buildResponsesBody(
 
   for (const att of attachments) {
     try {
-      const { mediaType, base64Data } = await resolveAttachment(att)
+      const { mediaType: rawMime, base64Data } = await resolveAttachment(att)
+      const mediaType = resolveMimeType(rawMime, att.name)
 
       if (isImageAttachment(att) || mediaType.startsWith('image/')) {
         contentParts.push({
