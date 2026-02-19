@@ -5,15 +5,15 @@ import { NextRequest, NextResponse } from 'next/server'
  * 
  * Forwards messages to OpenClaw Gateway's Chat Completions API.
  * Supports streaming responses via SSE.
- * 
- * UPDATED: Now accepts full conversation history for context.
+ * Supports multimodal messages (text + images).
  * 
  * Request body:
  * {
- *   message: string,           // The new user message
+ *   message: string,
  *   agentId: string,
  *   sessionKey?: string,
- *   history?: Array<{ role: 'user' | 'assistant', content: string }>,  // Prior messages for context
+ *   history?: Array<{ role: 'user' | 'assistant', content: string }>,
+ *   attachments?: Array<{ type: string, url: string, name?: string, mimeType?: string }>,
  *   stream?: boolean
  * }
  */
@@ -21,19 +21,80 @@ import { NextRequest, NextResponse } from 'next/server'
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
 
+type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
-  content: string
+  content: string | ContentPart[]
+}
+
+interface AttachmentInput {
+  type: string
+  url: string
+  name?: string
+  mimeType?: string
+}
+
+/**
+ * Build multimodal content array from text + attachments.
+ * If no image attachments, returns plain string for efficiency.
+ */
+function buildUserContent(
+  text: string,
+  attachments: AttachmentInput[] = []
+): string | ContentPart[] {
+  const imageAttachments = attachments.filter(
+    a => a.type === 'image' || a.mimeType?.startsWith('image/')
+  )
+
+  // No images — keep it simple (plain string)
+  if (imageAttachments.length === 0) {
+    return text
+  }
+
+  // Build multimodal content array
+  const parts: ContentPart[] = []
+
+  // Add image parts first so the model "sees" them in context
+  for (const img of imageAttachments) {
+    parts.push({
+      type: 'image_url',
+      image_url: { url: img.url },
+    })
+  }
+
+  // Add text part (even if empty, to signal user intent)
+  if (text) {
+    parts.push({ type: 'text', text })
+  }
+
+  return parts
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { message, agentId, sessionKey, history = [], stream = true } = body
+    const {
+      message,
+      agentId,
+      sessionKey,
+      history = [],
+      attachments = [],
+      stream = true,
+    } = body
 
-    if (!message || !agentId) {
+    if (!message && attachments.length === 0) {
       return NextResponse.json(
-        { error: 'Missing required fields: message, agentId' },
+        { error: 'Missing required fields: message or attachments' },
+        { status: 400 }
+      )
+    }
+
+    if (!agentId) {
+      return NextResponse.json(
+        { error: 'Missing required field: agentId' },
         { status: 400 }
       )
     }
@@ -52,8 +113,11 @@ export async function POST(request: NextRequest) {
         role: msg.role as 'user' | 'assistant',
         content: msg.content,
       })),
-      // Add the new user message
-      { role: 'user' as const, content: message },
+      // Add the new user message (with image attachments if any)
+      {
+        role: 'user' as const,
+        content: buildUserContent(message || '', attachments),
+      },
     ]
 
     // Build request to OpenClaw Gateway

@@ -2,7 +2,7 @@
 
 import { useState, useRef, KeyboardEvent } from "react"
 import { cn } from "@/lib/utils"
-import { Send, Paperclip, Image, X } from "lucide-react"
+import { Send, Paperclip, Image, X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Attachment } from "./types"
 
@@ -10,6 +10,8 @@ interface ChatInputProps {
   onSend: (content: string, attachments: Attachment[]) => void
   disabled?: boolean
   placeholder?: string
+  conversationId?: string
+  sessionKey?: string
 }
 
 interface PendingFile {
@@ -18,13 +20,46 @@ interface PendingFile {
   type: 'image' | 'video' | 'file'
 }
 
+async function uploadFile(
+  file: File,
+  conversationId?: string,
+  sessionKey?: string
+): Promise<Attachment> {
+  const formData = new FormData()
+  formData.append('file', file)
+  if (conversationId) formData.append('conversationId', conversationId)
+  if (sessionKey) formData.append('sessionKey', sessionKey)
+
+  const response = await fetch('/api/chat/upload', {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}))
+    throw new Error(err.error || 'Upload failed')
+  }
+
+  const data = await response.json()
+  return {
+    type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file',
+    url: data.url,
+    name: data.name,
+    size: data.size,
+    mimeType: data.mimeType,
+  }
+}
+
 export function ChatInput({ 
   onSend, 
   disabled = false, 
-  placeholder = "Type a message..." 
+  placeholder = "Type a message...",
+  conversationId,
+  sessionKey,
 }: ChatInputProps) {
   const [message, setMessage] = useState("")
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
+  const [isUploading, setIsUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -63,16 +98,31 @@ export function ChatInput({
 
   const handleSend = async () => {
     if (!message.trim() && pendingFiles.length === 0) return
-    if (disabled) return
+    if (disabled || isUploading) return
 
-    // TODO: Upload files to Supabase Storage and get URLs
-    // For now, we'll create placeholder attachments
-    const attachments: Attachment[] = pendingFiles.map(pf => ({
-      type: pf.type,
-      url: pf.preview || '', // Will be replaced with actual URL after upload
-      name: pf.file.name,
-      size: pf.file.size
-    }))
+    let attachments: Attachment[] = []
+
+    // Upload all pending files to Supabase Storage first
+    if (pendingFiles.length > 0) {
+      setIsUploading(true)
+      try {
+        const uploadPromises = pendingFiles.map(pf =>
+          uploadFile(pf.file, conversationId, sessionKey)
+        )
+        attachments = await Promise.all(uploadPromises)
+      } catch (err) {
+        console.error('File upload failed:', err)
+        // TODO: Show error toast to user
+        setIsUploading(false)
+        return
+      }
+      setIsUploading(false)
+    }
+
+    // Clean up previews
+    pendingFiles.forEach(pf => {
+      if (pf.preview) URL.revokeObjectURL(pf.preview)
+    })
 
     onSend(message.trim(), attachments)
     setMessage("")
@@ -110,6 +160,8 @@ export function ChatInput({
       })
     }
   }
+
+  const isBusy = disabled || isUploading
 
   return (
     <div className="border-t border-white/10 p-4">
@@ -172,7 +224,7 @@ export function ChatInput({
             size="icon"
             className="h-9 w-9 text-white/40 hover:text-white/70"
             onClick={() => fileInputRef.current?.click()}
-            disabled={disabled}
+            disabled={isBusy}
           >
             <Paperclip className="h-4 w-4" />
           </Button>
@@ -182,7 +234,7 @@ export function ChatInput({
             size="icon"
             className="h-9 w-9 text-white/40 hover:text-white/70"
             onClick={() => imageInputRef.current?.click()}
-            disabled={disabled}
+            disabled={isBusy}
           >
             <Image className="h-4 w-4" />
           </Button>
@@ -196,8 +248,8 @@ export function ChatInput({
             onChange={handleInput}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder={placeholder}
-            disabled={disabled}
+            placeholder={isUploading ? "Uploading files..." : placeholder}
+            disabled={isBusy}
             rows={1}
             className={cn(
               "w-full resize-none rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/30",
@@ -211,10 +263,14 @@ export function ChatInput({
         {/* Send Button */}
         <Button
           onClick={handleSend}
-          disabled={disabled || (!message.trim() && pendingFiles.length === 0)}
+          disabled={isBusy || (!message.trim() && pendingFiles.length === 0)}
           className="h-9 w-9 p-0 bg-purple-500 hover:bg-purple-600 disabled:opacity-30"
         >
-          <Send className="h-4 w-4" />
+          {isUploading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="h-4 w-4" />
+          )}
         </Button>
       </div>
 

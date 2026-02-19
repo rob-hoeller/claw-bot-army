@@ -311,9 +311,11 @@ export function ChatPanel({
         sessionKey: openclawSessionKey,
         history,
         stream: true,
-        attachments: attachments.filter(a => a.type === 'image').map(a => ({
-          type: 'image_url',
-          image_url: { url: a.url },
+        attachments: attachments.map(a => ({
+          type: a.type,
+          url: a.url,
+          name: a.name,
+          mimeType: a.mimeType,
         })),
       }),
       signal: abortControllerRef.current.signal,
@@ -627,6 +629,8 @@ export function ChatPanel({
           onSend={handleSend}
           disabled={isSending}
           placeholder={`Message ${agentName}...`}
+          conversationId={conversation?.id}
+          sessionKey={openclawSessionKey}
         />
       )}
     </div>
