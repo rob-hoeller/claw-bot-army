@@ -368,22 +368,34 @@ export function ChatPanel({
 
     try {
       // Save user message via API (service role)
+      // Strip base64 data from attachments before persisting (too large for DB)
       if (!isDemoMode && conversation) {
-        const response = await fetch('/api/chat/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            conversationId: conversation.id,
-            role: 'user',
-            content,
-            attachments
+        try {
+          const persistAttachments = attachments.map(a => ({
+            ...a,
+            url: a.url.startsWith('data:') ? `[base64:${a.mimeType || a.type}]` : a.url,
+          }))
+          const response = await fetch('/api/chat/messages', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              conversationId: conversation.id,
+              role: 'user',
+              content,
+              attachments: persistAttachments
+            })
           })
-        })
-        if (!response.ok) throw new Error('Failed to save user message')
-        const data = await response.json()
-        const savedMsg = data.message
-        if (savedMsg) {
-          setMessages(prev => prev.map(m => m.id === userMessage.id ? savedMsg : m))
+          if (response.ok) {
+            const data = await response.json()
+            const savedMsg = data.message
+            if (savedMsg) {
+              setMessages(prev => prev.map(m => m.id === userMessage.id ? savedMsg : m))
+            }
+          } else {
+            console.warn('Failed to persist user message:', response.status)
+          }
+        } catch (persistErr) {
+          console.warn('Message persistence error (non-fatal):', persistErr)
         }
       }
 
@@ -415,6 +427,7 @@ export function ChatPanel({
 
       // Save assistant message via API (service role)
       if (!isDemoMode && conversation) {
+        try {
         const response = await fetch('/api/chat/messages', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -425,11 +438,21 @@ export function ChatPanel({
             attachments: []
           })
         })
-        if (!response.ok) throw new Error('Failed to save assistant message')
+        if (response.ok) {
         const data = await response.json()
         const savedResponse = data.message
         if (savedResponse) {
           setMessages(prev => [...prev, savedResponse])
+        } else {
+          setMessages(prev => [...prev, assistantMessage])
+        }
+        } else {
+          console.warn('Failed to persist assistant message:', response.status)
+          setMessages(prev => [...prev, assistantMessage])
+        }
+        } catch (persistErr) {
+          console.warn('Assistant message persistence error (non-fatal):', persistErr)
+          setMessages(prev => [...prev, assistantMessage])
         }
       } else {
         setMessages(prev => [...prev, assistantMessage])
