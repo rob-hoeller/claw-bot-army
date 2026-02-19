@@ -15,8 +15,20 @@ if [ -z "$MEMORY_CONTENT" ]; then
 fi
 
 # Supabase config
-SUPABASE_URL="https://lqlnflbzsqsmufjrygvu.supabase.co"
-SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxxbG5mbGJ6c3FzbXVmanJ5Z3Z1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDc0ODM3NCwiZXhwIjoyMDg2MzI0Mzc0fQ.k2QS8Z87p91dWhLzOKrBOdEkdfaFWZlVmckHpgJXYIM"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/../dashboard/.env.local" ]; then
+  set -a
+  source "${SCRIPT_DIR}/../dashboard/.env.local"
+  set +a
+fi
+
+SUPABASE_URL="${NEXT_PUBLIC_SUPABASE_URL:-}"
+SUPABASE_KEY="${SUPABASE_SERVICE_ROLE_KEY:-}"
+if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+  echo "❌ Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY."
+  echo "   Set them in Vercel or export locally before running."
+  exit 1
+fi
 
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 TODAY=$(date -u +"%Y-%m-%d")
