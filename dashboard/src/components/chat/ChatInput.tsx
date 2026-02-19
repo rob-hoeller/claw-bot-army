@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, KeyboardEvent } from "react"
+import { useState, useRef, useCallback, KeyboardEvent } from "react"
 import { cn } from "@/lib/utils"
 import { Send, Paperclip, Image, X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -20,6 +20,12 @@ interface PendingFile {
   type: 'image' | 'video' | 'file'
 }
 
+function classifyFile(file: File): 'image' | 'video' | 'file' {
+  if (file.type.startsWith('image/')) return 'image'
+  if (file.type.startsWith('video/')) return 'video'
+  return 'file'
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -34,9 +40,7 @@ async function uploadFile(
   conversationId?: string,
   sessionKey?: string
 ): Promise<Attachment> {
-  const fileType = file.type.startsWith('image/') ? 'image' as const
-    : file.type.startsWith('video/') ? 'video' as const
-    : 'file' as const
+  const fileType = classifyFile(file)
 
   // Try uploading to Supabase Storage first
   try {
@@ -76,6 +80,18 @@ async function uploadFile(
   }
 }
 
+/** Convert a FileList / File[] into PendingFile entries */
+function filesToPending(files: File[]): PendingFile[] {
+  return files.map(file => {
+    const type = classifyFile(file)
+    return {
+      file,
+      type,
+      preview: type === 'image' ? URL.createObjectURL(file) : undefined,
+    }
+  })
+}
+
 export function ChatInput({ 
   onSend, 
   disabled = false, 
@@ -86,29 +102,21 @@ export function ChatInput({
   const [message, setMessage] = useState("")
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const dragCounterRef = useRef(0)
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>, type: 'any' | 'image') => {
+  const addFiles = useCallback((files: File[]) => {
+    if (files.length === 0) return
+    setPendingFiles(prev => [...prev, ...filesToPending(files)])
+  }, [])
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
-    
-    const newFiles: PendingFile[] = files.map(file => {
-      const fileType = file.type.startsWith('image/') 
-        ? 'image' 
-        : file.type.startsWith('video/') 
-          ? 'video' 
-          : 'file'
-      
-      return {
-        file,
-        type: fileType,
-        preview: fileType === 'image' ? URL.createObjectURL(file) : undefined
-      }
-    })
-
-    setPendingFiles(prev => [...prev, ...newFiles])
-    e.target.value = '' // Reset input
+    addFiles(files)
+    e.target.value = '' // Reset input so same file can be re-selected
   }
 
   const removePendingFile = (index: number) => {
@@ -128,14 +136,12 @@ export function ChatInput({
 
     let attachments: Attachment[] = []
 
-    // Upload all pending files (Supabase Storage with base64 fallback)
     if (pendingFiles.length > 0) {
       setIsUploading(true)
       try {
-        const uploadPromises = pendingFiles.map(pf =>
-          uploadFile(pf.file, conversationId, sessionKey)
+        attachments = await Promise.all(
+          pendingFiles.map(pf => uploadFile(pf.file, conversationId, sessionKey))
         )
-        attachments = await Promise.all(uploadPromises)
       } catch (err) {
         console.error('All upload methods failed:', err)
         setIsUploading(false)
@@ -144,7 +150,7 @@ export function ChatInput({
       setIsUploading(false)
     }
 
-    // Clean up previews
+    // Clean up blob previews
     pendingFiles.forEach(pf => {
       if (pf.preview) URL.revokeObjectURL(pf.preview)
     })
@@ -161,7 +167,6 @@ export function ChatInput({
     }
   }
 
-  // Auto-resize textarea
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setMessage(e.target.value)
     const textarea = e.target
@@ -169,27 +174,74 @@ export function ChatInput({
     textarea.style.height = Math.min(textarea.scrollHeight, 150) + 'px'
   }
 
-  // Handle paste for images
+  // Paste handler — images from clipboard
   const handlePaste = (e: React.ClipboardEvent) => {
     const items = Array.from(e.clipboardData.items)
     const imageItems = items.filter(item => item.type.startsWith('image/'))
     
     if (imageItems.length > 0) {
       e.preventDefault()
-      imageItems.forEach(item => {
-        const file = item.getAsFile()
-        if (file) {
-          const preview = URL.createObjectURL(file)
-          setPendingFiles(prev => [...prev, { file, type: 'image' as const, preview }])
-        }
-      })
+      const files = imageItems
+        .map(item => item.getAsFile())
+        .filter((f): f is File => f !== null)
+      addFiles(files)
     }
   }
+
+  // Drag & drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current += 1
+    if (e.dataTransfer.types.includes('Files')) {
+      setIsDragOver(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current -= 1
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false)
+    }
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+
+    const files = Array.from(e.dataTransfer.files)
+    addFiles(files)
+  }, [addFiles])
 
   const isBusy = disabled || isUploading
 
   return (
-    <div className="border-t border-white/10 p-4">
+    <div
+      className={cn(
+        "border-t border-white/10 p-4 transition-colors",
+        isDragOver && "bg-purple-500/10 border-purple-500/40"
+      )}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragOver && (
+        <div className="flex items-center justify-center py-4 mb-3 rounded-xl border-2 border-dashed border-purple-500/50 bg-purple-500/5">
+          <p className="text-sm text-purple-300">Drop files here</p>
+        </div>
+      )}
+
       {/* Pending Files Preview */}
       {pendingFiles.length > 0 && (
         <div className="flex gap-2 mb-3 flex-wrap">
@@ -207,9 +259,12 @@ export function ChatInput({
                   />
                 </div>
               ) : (
-                <div className="w-16 h-16 rounded-lg border border-white/10 bg-white/5 flex items-center justify-center">
-                  <span className="text-xs text-white/50 text-center px-1 truncate">
+                <div className="w-16 h-16 rounded-lg border border-white/10 bg-white/5 flex flex-col items-center justify-center gap-0.5">
+                  <span className="text-[10px] font-medium text-purple-300">
                     {pf.file.name.split('.').pop()?.toUpperCase()}
+                  </span>
+                  <span className="text-[9px] text-white/30 px-1 truncate max-w-[56px]">
+                    {pf.file.name}
                   </span>
                 </div>
               )}
@@ -233,7 +288,7 @@ export function ChatInput({
             type="file"
             multiple
             className="hidden"
-            onChange={(e) => handleFileSelect(e, 'any')}
+            onChange={handleFileSelect}
           />
           <input
             ref={imageInputRef}
@@ -241,25 +296,29 @@ export function ChatInput({
             accept="image/*,video/*"
             multiple
             className="hidden"
-            onChange={(e) => handleFileSelect(e, 'image')}
+            onChange={handleFileSelect}
           />
           
+          {/* Paperclip: any file type (PC, Mac, mobile file explorers) */}
           <Button
             variant="ghost"
             size="icon"
             className="h-9 w-9 text-white/40 hover:text-white/70"
             onClick={() => fileInputRef.current?.click()}
             disabled={isBusy}
+            title="Attach files"
           >
             <Paperclip className="h-4 w-4" />
           </Button>
           
+          {/* Image button: filtered to images/video */}
           <Button
             variant="ghost"
             size="icon"
             className="h-9 w-9 text-white/40 hover:text-white/70"
             onClick={() => imageInputRef.current?.click()}
             disabled={isBusy}
+            title="Attach images"
           >
             <Image className="h-4 w-4" />
           </Button>
@@ -301,7 +360,7 @@ export function ChatInput({
 
       {/* Helper Text */}
       <p className="text-[10px] text-white/30 mt-2 text-center">
-        Press Enter to send • Shift+Enter for new line • Paste images directly
+        Enter to send • Shift+Enter for new line • Paste or drag &amp; drop files
       </p>
     </div>
   )
