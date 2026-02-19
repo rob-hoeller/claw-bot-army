@@ -20,33 +20,59 @@ interface PendingFile {
   type: 'image' | 'video' | 'file'
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 async function uploadFile(
   file: File,
   conversationId?: string,
   sessionKey?: string
 ): Promise<Attachment> {
-  const formData = new FormData()
-  formData.append('file', file)
-  if (conversationId) formData.append('conversationId', conversationId)
-  if (sessionKey) formData.append('sessionKey', sessionKey)
+  const fileType = file.type.startsWith('image/') ? 'image' as const
+    : file.type.startsWith('video/') ? 'video' as const
+    : 'file' as const
 
-  const response = await fetch('/api/chat/upload', {
-    method: 'POST',
-    body: formData,
-  })
+  // Try uploading to Supabase Storage first
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    if (conversationId) formData.append('conversationId', conversationId)
+    if (sessionKey) formData.append('sessionKey', sessionKey)
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    throw new Error(err.error || 'Upload failed')
+    const response = await fetch('/api/chat/upload', {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      return {
+        type: fileType,
+        url: data.url,
+        name: data.name,
+        size: data.size,
+        mimeType: data.mimeType,
+      }
+    }
+    console.warn('Upload returned', response.status, '— falling back to base64')
+  } catch (err) {
+    console.warn('Upload failed — falling back to base64:', err)
   }
 
-  const data = await response.json()
+  // Fallback: convert to base64 data URL
+  const dataUrl = await fileToBase64(file)
   return {
-    type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file',
-    url: data.url,
-    name: data.name,
-    size: data.size,
-    mimeType: data.mimeType,
+    type: fileType,
+    url: dataUrl,
+    name: file.name,
+    size: file.size,
+    mimeType: file.type,
   }
 }
 
@@ -102,7 +128,7 @@ export function ChatInput({
 
     let attachments: Attachment[] = []
 
-    // Upload all pending files to Supabase Storage first
+    // Upload all pending files (Supabase Storage with base64 fallback)
     if (pendingFiles.length > 0) {
       setIsUploading(true)
       try {
@@ -111,8 +137,7 @@ export function ChatInput({
         )
         attachments = await Promise.all(uploadPromises)
       } catch (err) {
-        console.error('File upload failed:', err)
-        // TODO: Show error toast to user
+        console.error('All upload methods failed:', err)
         setIsUploading(false)
         return
       }

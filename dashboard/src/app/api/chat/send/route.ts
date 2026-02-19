@@ -59,10 +59,19 @@ function buildUserContent(
 
   // Add image parts first so the model "sees" them in context
   for (const img of imageAttachments) {
-    parts.push({
-      type: 'image_url',
-      image_url: { url: img.url },
-    })
+    if (img.url.startsWith('data:')) {
+      // Base64 data URL — send inline
+      parts.push({
+        type: 'image_url',
+        image_url: { url: img.url },
+      })
+    } else {
+      // Regular URL (Supabase Storage etc.)
+      parts.push({
+        type: 'image_url',
+        image_url: { url: img.url },
+      })
+    }
   }
 
   // Add text part (even if empty, to signal user intent)
