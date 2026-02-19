@@ -14,56 +14,7 @@ interface ActivityFeedProps {
 }
 
 // Demo data for when Supabase isn't connected
-const demoItems: ActivityItemData[] = [
-  {
-    id: 'demo-1',
-    timestamp: new Date(Date.now() - 5000).toISOString(),
-    userId: 'user-1',
-    userName: 'Lance',
-    agentId: 'hbx',
-    agentName: 'HBx',
-    agentEmoji: '🦞',
-    role: 'user',
-    preview: 'Can you check the status of the deployment?',
-    conversationId: 'conv-1'
-  },
-  {
-    id: 'demo-2',
-    timestamp: new Date(Date.now() - 4000).toISOString(),
-    userId: 'user-1',
-    userName: 'Lance',
-    agentId: 'hbx',
-    agentName: 'HBx',
-    agentEmoji: '🦞',
-    role: 'assistant',
-    preview: 'Checking Vercel deployment status now...',
-    conversationId: 'conv-1'
-  },
-  {
-    id: 'demo-3',
-    timestamp: new Date(Date.now() - 3000).toISOString(),
-    userId: 'user-2',
-    userName: 'Rob',
-    agentId: 'cx-1',
-    agentName: 'CX-1',
-    agentEmoji: '🤖',
-    role: 'user',
-    preview: 'What tasks do you have pending?',
-    conversationId: 'conv-2'
-  },
-  {
-    id: 'demo-4',
-    timestamp: new Date(Date.now() - 2000).toISOString(),
-    userId: 'user-2',
-    userName: 'Rob',
-    agentId: 'cx-1',
-    agentName: 'CX-1',
-    agentEmoji: '🤖',
-    role: 'assistant',
-    preview: 'I have 3 pending tasks in the queue...',
-    conversationId: 'conv-2'
-  },
-]
+// Demo data removed — all data comes from Supabase
 
 // Agent metadata lookup (would come from config in real app)
 const agentMeta: Record<string, { name: string; emoji: string }> = {
@@ -91,7 +42,7 @@ export function ActivityFeed({
   // Load initial items and set up real-time subscription
   useEffect(() => {
     if (isDemoMode) {
-      setItems(demoItems)
+      setItems([])
       return
     }
 
@@ -237,7 +188,7 @@ export function ActivityFeed({
           <span className="text-xs font-medium text-white/70">Activity Feed</span>
           {isDemoMode && (
             <span className="text-[10px] text-yellow-400/70 bg-yellow-400/10 px-1.5 py-0.5 rounded">
-              Demo
+              No DB
             </span>
           )}
         </div>

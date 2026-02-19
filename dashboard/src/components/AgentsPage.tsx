@@ -942,83 +942,24 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
   const [showActivityFeed, setShowActivityFeed] = useState(true)
   const currentUserId = mapUserToChannelId(userEmail, userMetadata)
 
-  // Agent tree state
-  const [agentTree, setAgentTree] = useState<Agent>({
-    id: "HBx",
-    name: "HBx",
-    role: "Master Orchestrator",
-    dept: "Platform",
-    status: "active",
-    emoji: "🧠",
-    children: [
-      {
-        id: "HBx_SL1",
-        name: "Schellie",
-        role: "Digital Online Sales Counselor",
-        dept: "Sales",
-        status: "active",
-        emoji: "🏠",
-      },
-      {
-        id: "HBx_SL2",
-        name: "Competitive Intel",
-        role: "Market Intelligence Analyst",
-        dept: "Sales",
-        status: "deploying",
-        emoji: "🔍",
-      },
-      {
-        id: "HBx_SK1",
-        name: "Skill Builder",
-        role: "Agent Configuration Designer",
-        dept: "Platform",
-        status: "deploying",
-        emoji: "🛠️",
-      },
-      {
-        id: "HBx_IN1",
-        name: "Architectural AI",
-        role: "Design Assistance & Visualization",
-        dept: "Innovation",
-        status: "standby",
-        emoji: "📐",
-      },
-      {
-        id: "HBx_IN2",
-        name: "Process Optimizer",
-        role: "Construction Workflow Intelligence",
-        dept: "Innovation",
-        status: "standby",
-        emoji: "🏭",
-      },
-      {
-        id: "HBx_IN3",
-        name: "Research Lab",
-        role: "Experimental AI & Testing",
-        dept: "Innovation",
-        status: "standby",
-        emoji: "🔬",
-      },
-      {
-        id: "HBx_SP1",
-        name: "Support",
-        role: "Bug Triage & Platform Maintenance",
-        dept: "Support",
-        status: "active",
-        emoji: "🛟",
-      },
-    ],
-  })
+  // Agent tree state — loaded from Supabase (no hardcoded fallback)
+  const [agentTree, setAgentTree] = useState<Agent | null>(null)
+  const [agentsLoading, setAgentsLoading] = useState(true)
+  const [agentsError, setAgentsError] = useState<string | null>(null)
 
   // Fetch agents from Supabase on mount
   useEffect(() => {
     const fetchAgents = async () => {
       if (!supabase) {
-        console.log('[AgentsPage] Supabase not configured, using hardcoded agent tree')
+        setAgentsLoading(false)
+        setAgentsError("Database not configured — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY")
         return
       }
 
       try {
+        setAgentsLoading(true)
+        setAgentsError(null)
+
         const { data, error } = await supabase
           .from('agents')
           .select('id, name, role, description, emoji, status, department_id, capabilities')
@@ -1026,38 +967,45 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
 
         if (error) throw error
 
-        if (data && data.length > 0) {
-          // Find HBx (root)
-          const hbx = data.find(a => a.id === 'HBx')
-          const children = data.filter(a => a.id !== 'HBx')
+        if (!data || data.length === 0) {
+          setAgentsError("No agents found in database")
+          setAgentsLoading(false)
+          return
+        }
 
-          if (hbx) {
-            const tree: Agent = {
-              id: hbx.id,
-              name: hbx.name,
-              role: hbx.role,
-              dept: "Platform",
-              status: (hbx.status as Agent['status']) || "active",
-              emoji: hbx.emoji || "🧠",
-              description: hbx.description || undefined,
-              children: children.map(child => ({
-                id: child.id,
-                name: child.name,
-                role: child.role,
-                dept: child.department_id || "Platform",
-                status: (child.status as Agent['status']) || "standby",
-                emoji: child.emoji || "🤖",
-                description: child.description || undefined,
-                capabilities: (child.capabilities as string[]) || undefined,
-              }))
-            }
-            setAgentTree(tree)
-            console.log('[AgentsPage] Loaded', data.length, 'agents from database')
+        // Find HBx (root)
+        const hbx = data.find(a => a.id === 'HBx')
+        const children = data.filter(a => a.id !== 'HBx')
+
+        if (hbx) {
+          const tree: Agent = {
+            id: hbx.id,
+            name: hbx.name,
+            role: hbx.role,
+            dept: "Platform",
+            status: (hbx.status as Agent['status']) || "active",
+            emoji: hbx.emoji || "🧠",
+            description: hbx.description || undefined,
+            children: children.map(child => ({
+              id: child.id,
+              name: child.name,
+              role: child.role,
+              dept: child.department_id || "Platform",
+              status: (child.status as Agent['status']) || "standby",
+              emoji: child.emoji || "🤖",
+              description: child.description || undefined,
+              capabilities: (child.capabilities as string[]) || undefined,
+            }))
           }
+          setAgentTree(tree)
+        } else {
+          setAgentsError("Root agent (HBx) not found in database")
         }
       } catch (err) {
         console.error('[AgentsPage] Error fetching agents:', err)
-        // Keep using hardcoded tree as fallback
+        setAgentsError(err instanceof Error ? err.message : 'Failed to load agents')
+      } finally {
+        setAgentsLoading(false)
       }
     }
 
@@ -1066,6 +1014,8 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
 
   // Handle clicking on an activity item
   const handleActivityClick = (item: ActivityItemData) => {
+    if (!agentTree) return
+    
     const findAgent = (tree: Agent, id: string): Agent | null => {
       if (tree.id.toLowerCase() === id.toLowerCase()) return tree
       if (tree.children) {
@@ -1083,13 +1033,47 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
     }
   }
 
-  // Global knowledge placeholder (not implemented in this refactor)
+  // Global knowledge — TODO: load from Supabase global_knowledge table
   const globalKnowledgeFiles: AgentFile[] = [
-    { name: "COMPANY", content: "# Company Overview\n\nGlobal knowledge base not yet implemented." },
+    { name: "COMPANY", content: "# Company Overview\n\nGlobal knowledge base — connect to Supabase to view." },
   ]
 
-  const rootAgent = agentTree
-  const childAgents = agentTree.children ?? []
+  // Safe to assert non-null here — we return early above if agentTree is null
+  const rootAgent = agentTree!
+  const childAgents = agentTree!.children ?? []
+
+  // Loading state
+  if (agentsLoading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-white/50">Loading agents...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (agentsError || !agentTree) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)]">
+        <div className="flex flex-col items-center gap-3 text-center px-4 max-w-md">
+          <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center">
+            <Bot className="h-6 w-6 text-red-400" />
+          </div>
+          <h3 className="text-lg font-medium text-white">Failed to load agents</h3>
+          <p className="text-sm text-white/50">{agentsError || "No agent data available"}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="text-sm text-purple-400 hover:text-purple-300 mt-2"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
@@ -1171,7 +1155,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
       {/* Data source indicator */}
       <div className="mt-8 text-center">
         <p className="text-white/20 text-xs">
-          Live data from Supabase • {1 + (agentTree.children?.length ?? 0)} agents
+          Live data from Supabase • {1 + childAgents.length} agents
         </p>
       </div>
 

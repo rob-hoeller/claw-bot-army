@@ -59,8 +59,8 @@ export function ChatPanel({
     scrollToBottom()
   }, [messages, streamingContent, scrollToBottom])
 
-  // Demo mode: no Supabase or no userId
-  const isDemoMode = !supabase || !userId
+  // Check if database is available
+  const isDbAvailable = !!supabase && !!userId
 
   // Fetch history from OpenClaw Gateway
   const fetchGatewayHistory = useCallback(async () => {
@@ -77,7 +77,7 @@ export function ChatPanel({
 
   // Sync messages from OpenClaw to Supabase
   const syncFromOpenClaw = useCallback(async () => {
-    if (isDemoMode || !conversation) return
+    if (!isDbAvailable || !conversation) return
     
     setIsSyncing(true)
     try {
@@ -95,11 +95,11 @@ export function ChatPanel({
     } finally {
       setIsSyncing(false)
     }
-  }, [isDemoMode, conversation, fetchGatewayHistory, messages])
+  }, [isDbAvailable, conversation, fetchGatewayHistory, messages])
 
   // Load older messages (pagination)
   const loadMore = useCallback(async () => {
-    if (!conversation || isDemoMode || isLoadingMore || !hasMore) return
+    if (!conversation || !isDbAvailable || isLoadingMore || !hasMore) return
 
     setIsLoadingMore(true)
     const container = messagesContainerRef.current
@@ -137,7 +137,7 @@ export function ChatPanel({
     } finally {
       setIsLoadingMore(false)
     }
-  }, [conversation, isDemoMode, isLoadingMore, hasMore, messages])
+  }, [conversation, isDbAvailable, isLoadingMore, hasMore, messages])
 
   // Check gateway connection on mount
   useEffect(() => {
@@ -155,27 +155,17 @@ export function ChatPanel({
   // Load or create conversation
   useEffect(() => {
     async function initConversation() {
-      // Demo mode - use mock data
-      if (isDemoMode) {
+      // No database — show error state instead of fake data
+      if (!isDbAvailable) {
         setIsLoading(false)
-        setError(null)
-        const welcomeNote = gatewayConnected 
-          ? "" 
-          : "\n\n_(Gateway not connected — responses will be simulated)_"
-        setMessages([
-          {
-            id: '1',
-            conversation_id: 'demo',
-            role: 'assistant',
-            content: `Hello! I'm ${agentName}. How can I help you today?${welcomeNote}`,
-            attachments: [],
-            created_at: new Date().toISOString()
-          }
-        ])
+        setError(
+          !supabase
+            ? "Database not configured — set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY"
+            : "Not authenticated — sign in to chat"
+        )
         return
       }
 
-      // Real mode - use server API (service role)
       try {
         setIsLoading(true)
         setError(null)
@@ -237,7 +227,7 @@ export function ChatPanel({
     }
 
     initConversation()
-  }, [agentId, agentName, userId, isDemoMode, gatewayConnected, syncFromGateway, fetchGatewayHistory])
+  }, [agentId, agentName, userId, isDbAvailable, gatewayConnected, syncFromGateway, fetchGatewayHistory])
 
   // Parse SSE stream from OpenClaw gateway
   const parseSSEStream = async (
@@ -372,7 +362,7 @@ export function ChatPanel({
     try {
       // Save user message via API (service role)
       // Strip base64 data from attachments before persisting (too large for DB)
-      if (!isDemoMode && conversation) {
+      if (isDbAvailable && conversation) {
         try {
           const persistAttachments = attachments.map(a => ({
             ...a,
@@ -402,22 +392,14 @@ export function ChatPanel({
         }
       }
 
-      // Try to send to gateway
+      // Send to gateway — no mock fallback
       let responseContent: string
 
-      if (gatewayConnected) {
-        try {
-          responseContent = await sendToGateway(content, attachments)
-        } catch (err) {
-          console.error('Gateway error, falling back to mock:', err)
-          // Fallback to mock if gateway fails
-          responseContent = `I received your message: "${content}"\n\n_(Gateway connection failed — this is a simulated response)_`
-        }
-      } else {
-        // Mock response when gateway not connected
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        responseContent = `I received your message: "${content}"\n\n_(Gateway not connected — configure OPENCLAW_GATEWAY_URL and OPENCLAW_GATEWAY_TOKEN for real responses)_`
+      if (!gatewayConnected) {
+        throw new Error("Gateway not connected — configure OPENCLAW_GATEWAY_URL and OPENCLAW_GATEWAY_TOKEN to enable chat")
       }
+
+      responseContent = await sendToGateway(content, attachments)
 
       const assistantMessage: Message = {
         id: `response-${Date.now()}`,
@@ -429,7 +411,7 @@ export function ChatPanel({
       }
 
       // Save assistant message via API (service role)
-      if (!isDemoMode && conversation) {
+      if (isDbAvailable && conversation) {
         try {
         const response = await fetch('/api/chat/messages', {
           method: 'POST',
@@ -523,7 +505,7 @@ export function ChatPanel({
         </div>
         <div className="flex items-center gap-3">
           {/* Sync button */}
-          {gatewayConnected && !isDemoMode && (
+          {gatewayConnected && isDbAvailable && (
             <button
               onClick={syncFromOpenClaw}
               disabled={isSyncing}
@@ -545,7 +527,7 @@ export function ChatPanel({
             ) : (
               <>
                 <WifiOff className="h-3 w-3 text-yellow-400" />
-                <span className="text-yellow-400/70">Demo mode</span>
+                <span className="text-yellow-400/70">Disconnected</span>
               </>
             )}
           </div>

@@ -121,40 +121,7 @@ const statusConfig = {
   cancelled: { color: 'bg-red-500/20 text-red-400', label: 'Cancelled' },
 }
 
-// ─── Demo Data ───────────────────────────────────────────────────
-const demoAgents: Agent[] = [
-  { id: 'HBx', name: 'HBx', emoji: '🧠' },
-  { id: 'HBx_IN1', name: 'Product Architect', emoji: '📐' },
-  { id: 'HBx_IN2', name: 'Code Factory', emoji: '🏭' },
-  { id: 'HBx_IN3', name: 'Research Lab', emoji: '🔬' },
-  { id: 'HBx_SP1', name: 'Support', emoji: '🛟' },
-  { id: 'HBx_SL1', name: 'Schellie', emoji: '🏠' },
-  { id: 'HBx_SL2', name: 'Competitive Intel', emoji: '🔍' },
-  { id: 'Lance', name: 'Lance', emoji: '👤' },
-]
-
-const demoFeatures: Feature[] = [
-  {
-    id: '1', title: 'Agent-to-Agent Communication', description: 'Enable HBx to spawn and coordinate with sub-agents', status: 'in_progress', priority: 'high',
-    requested_by: 'HBx', assigned_to: 'HBx_IN2', approved_by: 'Lance', acceptance_criteria: '- HBx can spawn sub-agents\n- Tasks route correctly', labels: ['core', 'infrastructure'],
-    pr_url: null, pr_number: null, pr_status: null, branch_name: 'hbx/agent-communication', created_at: new Date(Date.now() - 86400000).toISOString(), updated_at: new Date().toISOString(),
-  },
-  {
-    id: '2', title: 'Learning Log Dashboard', description: 'UI to display agent learning activities', status: 'planned', priority: 'medium',
-    requested_by: 'HBx_IN3', assigned_to: null, approved_by: null, acceptance_criteria: null, labels: ['ui', 'innovation'],
-    pr_url: null, pr_number: null, pr_status: null, branch_name: null, created_at: new Date(Date.now() - 172800000).toISOString(), updated_at: new Date().toISOString(),
-  },
-  {
-    id: '3', title: 'Competitive Intel Automation', description: 'Auto-scrape competitor pricing', status: 'backlog', priority: 'medium',
-    requested_by: 'HBx_SL2', assigned_to: null, approved_by: null, acceptance_criteria: null, labels: ['sales'],
-    pr_url: null, pr_number: null, pr_status: null, branch_name: null, created_at: new Date(Date.now() - 259200000).toISOString(), updated_at: new Date().toISOString(),
-  },
-]
-
-const demoComments: Comment[] = [
-  { id: '1', author: 'HBx', author_emoji: '🧠', content: 'Created feature request', created_at: new Date(Date.now() - 86400000).toISOString() },
-  { id: '2', author: 'Lance', author_emoji: '👤', content: 'Approved - high priority', created_at: new Date(Date.now() - 82800000).toISOString() },
-]
+// Demo data removed — all data comes from Supabase
 
 // ─── Status Dropdown ─────────────────────────────────────────────
 function StatusDropdown({ 
@@ -832,7 +799,7 @@ export function FeatureBoard() {
 
   // ─── Load data ───
   const loadData = useCallback(async () => {
-    if (isDemoMode) { setFeatures(demoFeatures); setAgents(demoAgents); setIsLoading(false); return }
+    if (isDemoMode) { setFeatures([]); setAgents([]); setIsLoading(false); return }
     try {
       const sb = supabase!
       const [{ data: fd, error: fe }, { data: ad, error: ae }] = await Promise.all([
@@ -845,8 +812,8 @@ export function FeatureBoard() {
       setAgents(ad || [])
     } catch (err) {
       console.error('Error loading data:', err)
-      setFeatures(demoFeatures)
-      setAgents(demoAgents)
+      setFeatures([])
+      setAgents([])
     } finally {
       setIsLoading(false)
     }
@@ -964,7 +931,7 @@ export function FeatureBoard() {
         <div className="px-2 py-1.5 rounded bg-yellow-500/10 border border-yellow-500/20">
           <div className="flex items-center gap-1.5">
             <AlertCircle className="h-3 w-3 text-yellow-400" />
-            <p className="text-[10px] text-yellow-400/80">Demo mode — Connect Supabase for live data</p>
+            <p className="text-[10px] text-yellow-400/80">Database not connected — configure Supabase to manage features</p>
           </div>
         </div>
       )}
