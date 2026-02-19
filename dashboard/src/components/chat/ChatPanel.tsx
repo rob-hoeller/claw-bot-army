@@ -267,7 +267,10 @@ export function ChatPanel({
             }
             try {
               const parsed = JSON.parse(data)
-              const content = parsed.choices?.[0]?.delta?.content || ""
+              // Support both /v1/chat/completions and /v1/responses streaming formats
+              const content = parsed.choices?.[0]?.delta?.content  // chat/completions format
+                || (parsed.type === 'response.output_text.delta' ? parsed.delta : '')  // responses format
+                || ''
               if (content) {
                 fullContent += content
                 onChunk(fullContent)
