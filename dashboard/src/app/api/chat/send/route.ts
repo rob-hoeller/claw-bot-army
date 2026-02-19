@@ -5,15 +5,15 @@ import { NextRequest, NextResponse } from 'next/server'
  * 
  * Forwards messages to OpenClaw Gateway's Chat Completions API.
  * Supports streaming responses via SSE.
- * 
- * UPDATED: Now accepts full conversation history for context.
+ * Supports multimodal messages (text + images).
  * 
  * Request body:
  * {
- *   message: string,           // The new user message
+ *   message: string,
  *   agentId: string,
  *   sessionKey?: string,
- *   history?: Array<{ role: 'user' | 'assistant', content: string }>,  // Prior messages for context
+ *   history?: Array<{ role: 'user' | 'assistant', content: string }>,
+ *   attachments?: Array<{ type: string, url: string, name?: string, mimeType?: string }>,
  *   stream?: boolean
  * }
  */
@@ -21,19 +21,93 @@ import { NextRequest, NextResponse } from 'next/server'
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
 
+type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
-  content: string
+  content: string | ContentPart[]
+}
+
+interface AttachmentInput {
+  type: string
+  url: string
+  name?: string
+  mimeType?: string
+}
+
+/**
+ * Build multimodal content array from text + attachments.
+ * If no image attachments, returns plain string for efficiency.
+ */
+function buildUserContent(
+  text: string,
+  attachments: AttachmentInput[] = []
+): string | ContentPart[] {
+  const imageAttachments = attachments.filter(
+    a => a.type === 'image' || a.mimeType?.startsWith('image/')
+  )
+
+  // No images — keep it simple (plain string)
+  if (imageAttachments.length === 0) {
+    return text
+  }
+
+  // Build multimodal content array
+  const parts: ContentPart[] = []
+
+  // Add image parts first so the model "sees" them in context
+  for (const img of imageAttachments) {
+    if (img.url.startsWith('data:')) {
+      // Base64 data URL — send inline
+      parts.push({
+        type: 'image_url',
+        image_url: { url: img.url },
+      })
+    } else {
+      // Regular URL (Supabase Storage etc.)
+      parts.push({
+        type: 'image_url',
+        image_url: { url: img.url },
+      })
+    }
+  }
+
+  // Add text part (even if empty, to signal user intent)
+  if (text) {
+    parts.push({ type: 'text', text })
+  }
+
+  return parts
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { message, agentId, sessionKey, history = [], stream = true } = body
+    const {
+      message,
+      agentId,
+      sessionKey,
+      history = [],
+      attachments = [],
+      stream = true,
+    } = body
 
-    if (!message || !agentId) {
+    // Debug: log what we received
+    console.log('[Chat Send] message:', message?.substring(0, 100))
+    console.log('[Chat Send] attachments:', attachments.length, attachments.map((a: AttachmentInput) => ({ type: a.type, urlPrefix: a.url?.substring(0, 80), mimeType: a.mimeType })))
+
+    if (!message && attachments.length === 0) {
       return NextResponse.json(
-        { error: 'Missing required fields: message, agentId' },
+        { error: 'Missing required fields: message or attachments' },
+        { status: 400 }
+      )
+    }
+
+    if (!agentId) {
+      return NextResponse.json(
+        { error: 'Missing required field: agentId' },
         { status: 400 }
       )
     }
@@ -52,9 +126,19 @@ export async function POST(request: NextRequest) {
         role: msg.role as 'user' | 'assistant',
         content: msg.content,
       })),
-      // Add the new user message
-      { role: 'user' as const, content: message },
+      // Add the new user message (with image attachments if any)
+      {
+        role: 'user' as const,
+        content: buildUserContent(message || '', attachments),
+      },
     ]
+
+    // Debug: log what we're sending to Gateway
+    const lastMsg = messages[messages.length - 1]
+    console.log('[Chat Send] Gateway content type:', typeof lastMsg.content === 'string' ? 'string' : `array[${(lastMsg.content as ContentPart[]).length}]`)
+    if (Array.isArray(lastMsg.content)) {
+      console.log('[Chat Send] Content parts:', (lastMsg.content as ContentPart[]).map(p => p.type))
+    }
 
     // Build request to OpenClaw Gateway
     const gatewayResponse = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {

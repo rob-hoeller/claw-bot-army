@@ -2,7 +2,7 @@
 
 > This file stores platform state, agent registry, and significant events.
 > Agent registry is **dynamically generated** from Supabase (single source of truth).
-> Last synced: 2026-02-17T14:00:04Z
+> Last synced: 2026-02-19T20:56:16Z
 
 ---
 
@@ -77,3 +77,7 @@
 | 2026-02-10 | Platform Setup | Dashboard deployed, agents configured |
 ### 2026-02-12T13:56:17Z
 Single source of truth architecture established: Supabase agents table is the canonical source for all agent config files. Dashboard reads/writes directly. OpenClaw syncs every 30 min for memory, 3x daily for other files.
+### 2026-02-18T19:07:42Z
+Test: add-memory.sh patch validation 2026-02-18T19:07:42Z
+### 2026-02-19T20:00:30Z
+Fixed memory logging gap. Created daily-memory-log.sh script + cron (11 PM ET). Memory now auto-logs to local files + Supabase memory_logs table daily.
