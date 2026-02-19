@@ -2,30 +2,181 @@ import { NextRequest, NextResponse } from 'next/server'
 
 /**
  * POST /api/chat/send
- * 
- * Forwards messages to OpenClaw Gateway.
- * - Text-only: uses /v1/chat/completions (OpenAI Chat format)
- * - With images: uses /v1/responses (OpenAI Responses format, supports input_image)
- * 
- * Request body:
- * {
- *   message: string,
- *   agentId: string,
- *   sessionKey?: string,
- *   history?: Array<{ role: 'user' | 'assistant', content: string }>,
- *   attachments?: Array<{ type: string, url: string, name?: string, mimeType?: string }>,
- *   stream?: boolean
- * }
+ *
+ * Forwards messages to the OpenClaw Gateway.
+ * - Text-only messages → /v1/chat/completions (standard chat format)
+ * - Messages with images → /v1/responses (supports input_image parts)
+ *
+ * The Gateway's /v1/chat/completions endpoint strips image_url content parts
+ * via extractTextContent, so images MUST go through /v1/responses which
+ * supports the input_image format with base64 or URL sources.
+ *
+ * Streaming formats differ:
+ * - /v1/chat/completions: choices[0].delta.content
+ * - /v1/responses: event type "response.output_text.delta" with delta field
+ * ChatPanel's parseSSEStream handles both.
  */
 
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
+
+// Max base64 payload we'll send inline (10MB decoded ≈ 13.3MB base64)
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 interface AttachmentInput {
   type: string
   url: string
   name?: string
   mimeType?: string
+}
+
+interface HistoryMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+/**
+ * Check if any attachment is an image.
+ */
+function hasImageAttachments(attachments: AttachmentInput[]): boolean {
+  return attachments.some(
+    a => a.type === 'image' || a.mimeType?.startsWith('image/')
+  )
+}
+
+/**
+ * Convert a data URL to { mediaType, base64Data }.
+ * Returns null if the URL is not a valid data URL.
+ */
+function parseDataUrl(url: string): { mediaType: string; base64Data: string } | null {
+  const match = url.match(/^data:([^;]+);base64,(.+)$/)
+  if (!match) return null
+  return { mediaType: match[1], base64Data: match[2] }
+}
+
+/**
+ * Fetch a URL and return base64-encoded content + media type.
+ * Used for Supabase Storage URLs so we can send inline to the Gateway.
+ */
+async function urlToBase64(url: string, fallbackMimeType?: string): Promise<{ mediaType: string; base64Data: string }> {
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`)
+  const buffer = await res.arrayBuffer()
+  if (buffer.byteLength > MAX_IMAGE_BYTES) {
+    throw new Error(`Image too large: ${(buffer.byteLength / 1024 / 1024).toFixed(1)}MB (max ${MAX_IMAGE_BYTES / 1024 / 1024}MB)`)
+  }
+  const base64Data = Buffer.from(buffer).toString('base64')
+  const mediaType = res.headers.get('content-type') || fallbackMimeType || 'image/png'
+  return { mediaType, base64Data }
+}
+
+/**
+ * Build the /v1/responses request body for messages with images.
+ * Uses the OpenAI Responses API format with input_image parts.
+ */
+async function buildResponsesBody(
+  message: string,
+  attachments: AttachmentInput[],
+  agentId: string,
+  history: HistoryMessage[]
+) {
+  // Build input array: history + user message with images
+  // Each item must have type: "message" per the OpenResponses schema
+  const input: Array<Record<string, unknown>> = []
+
+  // Add conversation history
+  for (const msg of history.slice(-20)) {
+    input.push({
+      type: 'message',
+      role: msg.role,
+      content: msg.content,
+    })
+  }
+
+  // Build the user message content parts
+  const contentParts: Array<Record<string, unknown>> = []
+
+  // Add image parts
+  const imageAttachments = attachments.filter(
+    a => a.type === 'image' || a.mimeType?.startsWith('image/')
+  )
+
+  for (const img of imageAttachments) {
+    try {
+      let mediaType: string
+      let base64Data: string
+
+      const parsed = parseDataUrl(img.url)
+      if (parsed) {
+        // Already base64
+        mediaType = parsed.mediaType
+        base64Data = parsed.base64Data
+      } else {
+        // Fetch from URL (Supabase Storage)
+        const fetched = await urlToBase64(img.url, img.mimeType)
+        mediaType = fetched.mediaType
+        base64Data = fetched.base64Data
+      }
+
+      contentParts.push({
+        type: 'input_image',
+        source: {
+          type: 'base64',
+          media_type: mediaType,
+          data: base64Data,
+        },
+      })
+    } catch (err) {
+      console.error(`[Chat Send] Failed to process image attachment:`, err)
+      // Skip this image but continue with the rest
+    }
+  }
+
+  // Add text part
+  if (message) {
+    contentParts.push({
+      type: 'input_text',
+      text: message,
+    })
+  }
+
+  input.push({
+    type: 'message',
+    role: 'user',
+    content: contentParts,
+  })
+
+  return {
+    model: `openclaw:${agentId}`,
+    input,
+    stream: true,
+  }
+}
+
+/**
+ * Build the /v1/chat/completions request body for text-only messages.
+ */
+function buildChatCompletionsBody(
+  message: string,
+  agentId: string,
+  history: HistoryMessage[]
+) {
+  const messages = [
+    ...history.slice(-20).map(msg => ({
+      role: msg.role,
+      content: msg.content,
+    })),
+    {
+      role: 'user',
+      content: message,
+    },
+  ]
+
+  return {
+    model: `openclaw:${agentId}`,
+    messages,
+    stream: true,
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -39,9 +190,6 @@ export async function POST(request: NextRequest) {
       attachments = [],
       stream = true,
     } = body
-
-    console.log('[Chat Send] message:', message?.substring(0, 100))
-    console.log('[Chat Send] attachments:', attachments.length)
 
     if (!message && attachments.length === 0) {
       return NextResponse.json(
@@ -64,31 +212,59 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const imageAttachments = (attachments as AttachmentInput[]).filter(
-      (a: AttachmentInput) => a.type === 'image' || a.mimeType?.startsWith('image/')
-    )
+    // Determine endpoint based on whether we have images
+    const useResponsesEndpoint = hasImageAttachments(attachments)
+    const endpoint = useResponsesEndpoint
+      ? `${GATEWAY_URL}/v1/responses`
+      : `${GATEWAY_URL}/v1/chat/completions`
 
-    // If we have images, use /v1/responses which supports input_image
-    if (imageAttachments.length > 0) {
-      return handleWithResponses({
-        message: message || '',
-        agentId,
-        sessionKey,
-        history,
-        imageAttachments,
-        stream,
+    // Build the appropriate request body
+    const requestBody = useResponsesEndpoint
+      ? await buildResponsesBody(message || '', attachments, agentId, history)
+      : buildChatCompletionsBody(message || '', agentId, history)
+
+    const gatewayResponse = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+        'Content-Type': 'application/json',
+        'x-openclaw-agent-id': agentId,
+        ...(sessionKey && { 'x-openclaw-session-key': sessionKey }),
+      },
+      body: JSON.stringify(requestBody),
+    })
+
+    if (!gatewayResponse.ok) {
+      const errorText = await gatewayResponse.text()
+      console.error(`[Chat Send] Gateway ${useResponsesEndpoint ? 'responses' : 'completions'} error:`, gatewayResponse.status, errorText)
+      return NextResponse.json(
+        { error: `Gateway error: ${gatewayResponse.status}` },
+        { status: gatewayResponse.status }
+      )
+    }
+
+    // Stream the response back to the client
+    if (stream && gatewayResponse.body) {
+      return new Response(gatewayResponse.body, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
       })
     }
 
-    // Text-only: use /v1/chat/completions
-    return handleWithChatCompletions({
-      message: message || '',
-      agentId,
-      sessionKey,
-      history,
-      stream,
-    })
+    // Non-streaming fallback
+    const data = await gatewayResponse.json()
+    const content = useResponsesEndpoint
+      ? data.output?.[0]?.content?.[0]?.text || ''
+      : data.choices?.[0]?.message?.content || ''
 
+    return NextResponse.json({
+      content,
+      agentId,
+      sessionKey: sessionKey || 'default',
+    })
   } catch (error) {
     console.error('[Chat Send Error]', error)
     return NextResponse.json(
@@ -96,198 +272,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   }
-}
-
-/**
- * Send via /v1/responses (supports images via input_image)
- */
-async function handleWithResponses(opts: {
-  message: string
-  agentId: string
-  sessionKey?: string
-  history: Array<{ role: string; content: string }>
-  imageAttachments: AttachmentInput[]
-  stream: boolean
-}) {
-  const { message, agentId, sessionKey, history, imageAttachments, stream } = opts
-
-  // Build input array in OpenAI Responses format
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const input: any[] = []
-
-  // Add conversation history
-  for (const msg of history.slice(-20)) {
-    input.push({
-      type: 'message',
-      role: msg.role === 'assistant' ? 'assistant' : 'user',
-      content: msg.content,
-    })
-  }
-
-  // Build the user message with image parts
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const contentParts: any[] = []
-
-  // Add images first
-  for (const img of imageAttachments) {
-    if (img.url.startsWith('data:')) {
-      // Base64 data URL — extract mime and data
-      const match = img.url.match(/^data:([^;]+);base64,(.+)$/)
-      if (match) {
-        contentParts.push({
-          type: 'input_image',
-          source: {
-            type: 'base64',
-            media_type: match[1],
-            data: match[2],
-          },
-        })
-      }
-    } else {
-      // Regular URL
-      contentParts.push({
-        type: 'input_image',
-        source: {
-          type: 'url',
-          url: img.url,
-        },
-      })
-    }
-  }
-
-  // Add text
-  if (message) {
-    contentParts.push({
-      type: 'input_text',
-      text: message,
-    })
-  } else {
-    contentParts.push({
-      type: 'input_text',
-      text: 'Describe this image.',
-    })
-  }
-
-  input.push({
-    type: 'message',
-    role: 'user',
-    content: contentParts,
-  })
-
-  console.log('[Chat Send] Using /v1/responses with', imageAttachments.length, 'images')
-  console.log('[Chat Send] Content parts:', contentParts.map(p => p.type))
-
-  const gatewayResponse = await fetch(`${GATEWAY_URL}/v1/responses`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-      'Content-Type': 'application/json',
-      'x-openclaw-agent-id': agentId,
-      ...(sessionKey && { 'x-openclaw-session-key': sessionKey }),
-    },
-    body: JSON.stringify({
-      model: `openclaw:${agentId}`,
-      input,
-      stream,
-    }),
-  })
-
-  if (!gatewayResponse.ok) {
-    const errorText = await gatewayResponse.text()
-    console.error('[Gateway Responses Error]', gatewayResponse.status, errorText)
-    return NextResponse.json(
-      { error: `Gateway error: ${gatewayResponse.status}` },
-      { status: gatewayResponse.status }
-    )
-  }
-
-  // Handle streaming response
-  if (stream && gatewayResponse.body) {
-    // /v1/responses uses SSE format too
-    return new Response(gatewayResponse.body, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    })
-  }
-
-  // Non-streaming
-  const data = await gatewayResponse.json()
-  const content = data.output?.[0]?.content?.[0]?.text || 
-                  data.choices?.[0]?.message?.content || ''
-
-  return NextResponse.json({
-    content,
-    agentId,
-    sessionKey: sessionKey || 'default',
-  })
-}
-
-/**
- * Send via /v1/chat/completions (text-only, more efficient)
- */
-async function handleWithChatCompletions(opts: {
-  message: string
-  agentId: string
-  sessionKey?: string
-  history: Array<{ role: string; content: string }>
-  stream: boolean
-}) {
-  const { message, agentId, sessionKey, history, stream } = opts
-
-  const messages = [
-    ...history.slice(-20).map((msg: { role: string; content: string }) => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    })),
-    {
-      role: 'user' as const,
-      content: message,
-    },
-  ]
-
-  const gatewayResponse = await fetch(`${GATEWAY_URL}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-      'Content-Type': 'application/json',
-      'x-openclaw-agent-id': agentId,
-      ...(sessionKey && { 'x-openclaw-session-key': sessionKey }),
-    },
-    body: JSON.stringify({
-      model: `openclaw:${agentId}`,
-      messages,
-      stream,
-    }),
-  })
-
-  if (!gatewayResponse.ok) {
-    const errorText = await gatewayResponse.text()
-    console.error('[Gateway Error]', gatewayResponse.status, errorText)
-    return NextResponse.json(
-      { error: `Gateway error: ${gatewayResponse.status}` },
-      { status: gatewayResponse.status }
-    )
-  }
-
-  if (stream && gatewayResponse.body) {
-    return new Response(gatewayResponse.body, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
-    })
-  }
-
-  const data = await gatewayResponse.json()
-  const content = data.choices?.[0]?.message?.content || ''
-
-  return NextResponse.json({
-    content,
-    agentId,
-    sessionKey: sessionKey || 'default',
-  })
 }
