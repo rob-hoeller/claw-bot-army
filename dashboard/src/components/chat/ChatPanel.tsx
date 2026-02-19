@@ -353,6 +353,7 @@ export function ChatPanel({
 
   // Handle sending a message
   const handleSend = async (content: string, attachments: Attachment[]) => {
+    console.log('[ChatPanel handleSend]', { content: content.slice(0, 50), attachmentCount: attachments.length, attachments: attachments.map(a => ({ type: a.type, name: a.name, urlPrefix: a.url?.slice(0, 60) })) })
     if (!content.trim() && attachments.length === 0) return
 
     const userMessage: Message = {
