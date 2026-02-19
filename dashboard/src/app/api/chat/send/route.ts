@@ -16,10 +16,65 @@ import { NextRequest, NextResponse } from 'next/server'
  *   responses:   event "response.output_text.delta" → delta field
  */
 
+import { createClient } from '@supabase/supabase-js'
+
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+function getSupabase() {
+  return createClient(supabaseUrl, supabaseServiceKey)
+}
+
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024 // 10MB per attachment
+
+// ─── Build agent system prompt from Supabase config files ────────
+async function buildAgentSystemPrompt(agentId: string): Promise<string | null> {
+  const sb = getSupabase()
+
+  const { data: agent, error } = await sb
+    .from('agents')
+    .select('id, name, role, soul_md, identity_md, tools_md, user_md, memory_md, agents_md')
+    .eq('id', agentId)
+    .single()
+
+  if (error || !agent) {
+    console.error(`[Chat Send] Failed to fetch agent config for ${agentId}:`, error)
+    return null
+  }
+
+  const parts: string[] = []
+
+  if (agent.soul_md) {
+    parts.push(agent.soul_md)
+  }
+  if (agent.identity_md) {
+    parts.push(`\n---\n# Identity Reference\n${agent.identity_md}`)
+  }
+  if (agent.tools_md) {
+    parts.push(`\n---\n# Tools & Capabilities\n${agent.tools_md}`)
+  }
+  if (agent.user_md) {
+    parts.push(`\n---\n# User Context\n${agent.user_md}`)
+  }
+  if (agent.agents_md) {
+    parts.push(`\n---\n# Agent Network\n${agent.agents_md}`)
+  }
+  if (agent.memory_md) {
+    const memoryTruncated = agent.memory_md.length > 2000
+      ? agent.memory_md.slice(0, 2000) + '\n\n[Memory truncated...]'
+      : agent.memory_md
+    parts.push(`\n---\n# Memory\n${memoryTruncated}`)
+  }
+
+  if (parts.length === 0) {
+    return `You are ${agent.name} (${agentId}), role: ${agent.role || 'AI Agent'}. Respond helpfully and stay in character.`
+  }
+
+  return parts.join('\n')
+}
 
 /** Fix MIME types when browser sends application/octet-stream */
 const MIME_OVERRIDES: Record<string, string> = {
@@ -111,9 +166,15 @@ async function buildResponsesBody(
   message: string,
   attachments: AttachmentInput[],
   agentId: string,
-  history: HistoryMessage[]
+  history: HistoryMessage[],
+  systemPrompt?: string | null
 ) {
   const input: Array<Record<string, unknown>> = []
+
+  // System prompt with agent persona
+  if (systemPrompt) {
+    input.push({ type: 'message', role: 'system', content: systemPrompt })
+  }
 
   // Conversation history
   for (const msg of history.slice(-20)) {
@@ -162,12 +223,22 @@ async function buildResponsesBody(
 function buildChatCompletionsBody(
   message: string,
   agentId: string,
-  history: HistoryMessage[]
+  history: HistoryMessage[],
+  systemPrompt?: string | null
 ) {
-  const messages = [
-    ...history.slice(-20).map(m => ({ role: m.role, content: m.content })),
-    { role: 'user', content: message },
-  ]
+  const messages: Array<{ role: string; content: string }> = []
+
+  // Inject agent persona as system message
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt })
+  }
+
+  // Conversation history
+  messages.push(...history.slice(-20).map(m => ({ role: m.role, content: m.content })))
+
+  // Current user message
+  messages.push({ role: 'user', content: message })
+
   return { model: `openclaw:${agentId}`, messages, stream: true }
 }
 
@@ -197,14 +268,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Gateway token not configured' }, { status: 500 })
     }
 
+    // Fetch agent persona from Supabase
+    const systemPrompt = await buildAgentSystemPrompt(agentId)
+
     const useResponses = hasAttachments(attachments)
     const endpoint = useResponses
       ? `${GATEWAY_URL}/v1/responses`
       : `${GATEWAY_URL}/v1/chat/completions`
 
     const requestBody = useResponses
-      ? await buildResponsesBody(message || '', attachments, agentId, history)
-      : buildChatCompletionsBody(message || '', agentId, history)
+      ? await buildResponsesBody(message || '', attachments, agentId, history, systemPrompt)
+      : buildChatCompletionsBody(message || '', agentId, history, systemPrompt)
 
     const gatewayResponse = await fetch(endpoint, {
       method: 'POST',
