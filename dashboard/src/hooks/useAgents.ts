@@ -33,6 +33,18 @@ const FILE_COLUMNS: Record<string, string> = {
   MEMORY: "memory_md",
 }
 
+const TOTAL_CONFIG_FILES = Object.keys(FILE_COLUMNS).length // 7
+
+/**
+ * Derive agent status from config file completeness.
+ * - All 7 files populated → "active"
+ * - Fewer than 7 → "deploying"
+ * The DB `status` column is ignored in favor of this live check.
+ */
+function deriveStatus(files: AgentFile[]): "active" | "deploying" | "standby" {
+  return files.length === TOTAL_CONFIG_FILES ? "active" : "deploying"
+}
+
 // Reverse mapping
 const COLUMN_TO_FILE: Record<string, string> = Object.fromEntries(
   Object.entries(FILE_COLUMNS).map(([k, v]) => [v, k])
@@ -101,18 +113,21 @@ export function useAgents() {
 
       if (fetchError) throw fetchError
 
-      const parsed: Agent[] = (data || []).map((row: Record<string, unknown>) => ({
-        id: row.id as string,
-        name: row.name as string,
-        role: row.role as string,
-        description: row.description as string,
-        emoji: row.emoji as string,
-        status: row.status as "active" | "deploying" | "standby",
-        capabilities: (row.capabilities as string[]) || [],
-        department_id: row.department_id as string,
-        dept: (row.departments as { name: string } | null)?.name || "Unknown",
-        files: parseAgentFiles(row),
-      }))
+      const parsed: Agent[] = (data || []).map((row: Record<string, unknown>) => {
+        const files = parseAgentFiles(row)
+        return {
+          id: row.id as string,
+          name: row.name as string,
+          role: row.role as string,
+          description: row.description as string,
+          emoji: row.emoji as string,
+          status: deriveStatus(files),
+          capabilities: (row.capabilities as string[]) || [],
+          department_id: row.department_id as string,
+          dept: (row.departments as { name: string } | null)?.name || "Unknown",
+          files,
+        }
+      })
 
       setAgents(parsed)
       setError(null)
@@ -152,15 +167,19 @@ export function useAgents() {
 
       if (updateError) throw updateError
 
-      // Refresh local state
+      // Refresh local state and re-derive status
       setAgents((prev) =>
         prev.map((agent) => {
           if (agent.id !== agentId) return agent
+          const updatedFiles = agent.files.some((f) => f.name === fileName)
+            ? agent.files.map((f) =>
+                f.name === fileName ? { ...f, content } : f
+              )
+            : [...agent.files, { name: fileName, content, column }]
           return {
             ...agent,
-            files: agent.files.map((f) =>
-              f.name === fileName ? { ...f, content } : f
-            ),
+            files: updatedFiles,
+            status: deriveStatus(updatedFiles),
           }
         })
       )
