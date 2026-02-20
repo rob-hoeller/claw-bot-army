@@ -133,6 +133,29 @@ function isImageAttachment(a: AttachmentInput): boolean {
   return a.type === 'image' || (a.mimeType?.startsWith('image/') ?? false)
 }
 
+/** MIME types that can be decoded from base64 to readable text */
+const TEXT_DECODABLE_MIMES = new Set([
+  'text/plain', 'text/markdown', 'text/csv', 'text/html', 'text/css',
+  'text/javascript', 'text/typescript', 'text/yaml', 'text/toml',
+  'text/x-python', 'text/x-ruby', 'text/x-go', 'text/x-rust', 'text/x-java',
+  'text/x-c', 'text/x-c++', 'text/x-shellscript', 'text/x-sql',
+  'application/json', 'application/xml', 'application/javascript',
+])
+
+function isTextDecodable(mime: string): boolean {
+  return TEXT_DECODABLE_MIMES.has(mime) || mime.startsWith('text/')
+}
+
+/** Decode base64 to UTF-8 text, truncating if too large */
+function decodeBase64ToText(b64: string, maxChars = 50000): string {
+  const buf = Buffer.from(b64, 'base64')
+  let text = buf.toString('utf-8')
+  if (text.length > maxChars) {
+    text = text.slice(0, maxChars) + '\n\n[... content truncated at ' + maxChars + ' characters ...]'
+  }
+  return text
+}
+
 /** Parse a data:…;base64,… URL into components. */
 function parseDataUrl(url: string): { mediaType: string; base64Data: string } | null {
   const m = url.match(/^data:([^;]+);base64,(.+)$/)
@@ -206,16 +229,26 @@ async function buildResponsesBody(
           type: 'input_image',
           source: { type: 'base64', media_type: mediaType, data: base64Data },
         })
-      } else {
-        // Non-image file (PDF, doc, txt, etc.)
+      } else if (isTextDecodable(mediaType)) {
+        // Text-based files: decode base64 to text and inline as input_text
+        // (OpenClaw /v1/responses doesn't forward input_file to models)
+        const textContent = decodeBase64ToText(base64Data)
         contentParts.push({
-          type: 'input_file',
-          source: {
-            type: 'base64',
-            media_type: mediaType,
-            data: base64Data,
-            ...(att.name && { filename: att.name }),
-          },
+          type: 'input_text',
+          text: `--- File: ${att.name || 'unknown'} (${mediaType}) ---\n${textContent}\n--- End of file ---`,
+        })
+      } else if (mediaType === 'application/pdf') {
+        // PDFs: send as base64 with a note — model may or may not process it
+        // For now, inline the raw bytes as a text note since input_file isn't supported
+        contentParts.push({
+          type: 'input_text',
+          text: `[Attached PDF: ${att.name || 'document.pdf'} — PDF content extraction not yet supported. Please ask the user to paste the text content instead.]`,
+        })
+      } else {
+        // Binary/unknown files: note the attachment
+        contentParts.push({
+          type: 'input_text',
+          text: `[Attached file: ${att.name || 'unknown'} (${mediaType}, ${Math.round(base64Data.length * 0.75 / 1024)}KB) — binary file content cannot be displayed inline.]`,
         })
       }
     } catch (err) {
