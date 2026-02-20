@@ -28,6 +28,7 @@ import { ChatPanel } from "@/components/chat"
 import { ActivityFeed, ActivityItemData } from "@/components/activity"
 import { AgentStatusBadge, useAgentStatus } from "@/components/agents"
 import { supabase } from "@/lib/supabase"
+import { useMemoryLogs } from "@/hooks/useMemoryLogs"
 
 // Agent data structure
 interface AgentFile {
@@ -492,6 +493,9 @@ function AgentDetailPanel({
   const [isLoadingFiles, setIsLoadingFiles] = useState(false)
   const [filesError, setFilesError] = useState<string | null>(null)
   
+  // Daily memory logs
+  const { logs: memoryLogs, loading: memoryLogsLoading } = useMemoryLogs(agent.id)
+
   // Editor state
   const [isEditing, setIsEditing] = useState(false)
   const [editContent, setEditContent] = useState("")
@@ -918,7 +922,31 @@ function AgentDetailPanel({
               </div>
               <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
                 <h4 className="text-sm font-medium text-white mb-3">Daily Logs</h4>
-                <p className="text-xs text-white/40">Memory logs will appear once connected.</p>
+                {memoryLogsLoading ? (
+                  <p className="text-xs text-white/40">Loading logs...</p>
+                ) : memoryLogs.length === 0 ? (
+                  <p className="text-xs text-white/40">No daily logs recorded yet.</p>
+                ) : (
+                  <div className="space-y-3 max-h-[400px] overflow-y-auto">
+                    {memoryLogs.map((day) => (
+                      <div key={day.date} className="space-y-1">
+                        <div className="text-[10px] text-white/50 uppercase tracking-wider font-medium sticky top-0 bg-black/80 py-0.5">
+                          {new Date(day.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                        </div>
+                        {day.entries.map((entry) => (
+                          <div key={entry.id} className="pl-2 border-l border-white/10">
+                            <div className="text-[9px] text-white/30">
+                              {new Date(entry.timestamp).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                            <pre className="text-[11px] text-white/60 font-mono whitespace-pre-wrap leading-relaxed">
+                              {entry.content}
+                            </pre>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
