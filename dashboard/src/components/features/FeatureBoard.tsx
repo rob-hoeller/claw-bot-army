@@ -488,6 +488,8 @@ function FeatureDetailPanel({
   const [newMessage, setNewMessage] = useState("")
   const [loadingMessages, setLoadingMessages] = useState(true)
   const [sending, setSending] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingContent, setStreamingContent] = useState("")
   const [activeTab, setActiveTab] = useState<'details' | 'chat'>('details')
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -541,12 +543,66 @@ function FeatureDetailPanel({
     return () => { supabase!.removeChannel(channel) }
   }, [feature.id])
 
-  // Auto-scroll when new messages arrive
+  // Auto-scroll when new messages or streaming content arrives
   useEffect(() => {
     if (activeTab === 'chat') scrollToBottom()
-  }, [messages, activeTab, scrollToBottom])
+  }, [messages, streamingContent, activeTab, scrollToBottom])
 
-  // Send message through bridge
+  // Parse SSE stream (OpenAI-compatible format)
+  const parseSSEStream = async (
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    onChunk: (content: string) => void,
+    onDone: (fullContent: string) => void
+  ) => {
+    const decoder = new TextDecoder()
+    let buffer = ""
+    let fullContent = ""
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ""
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6)
+            if (data === '[DONE]') {
+              onDone(fullContent)
+              return
+            }
+            try {
+              const parsed = JSON.parse(data)
+              const content = parsed.choices?.[0]?.delta?.content || ''
+              if (content) {
+                fullContent += content
+                onChunk(fullContent)
+              }
+            } catch { /* skip */ }
+          }
+        }
+      }
+      onDone(fullContent)
+    } catch (err) {
+      console.error('SSE parsing error:', err)
+      onDone(fullContent)
+    }
+  }
+
+  // Build conversation history for context
+  const buildHistory = useCallback(() => {
+    return messages
+      .filter(m => m.sender_type === 'user' || m.sender_type === 'agent')
+      .map(m => ({
+        role: m.sender_type === 'user' ? 'user' : 'assistant',
+        content: m.content,
+      }))
+  }, [messages])
+
+  // Send message with streaming
   const handleSendMessage = async () => {
     if (!newMessage.trim() || sending) return
     const content = newMessage.trim()
@@ -573,27 +629,75 @@ function FeatureDetailPanel({
         ? `[Feature: "${feature.title}"${feature.description ? ` — ${feature.description}` : ''}${feature.acceptance_criteria ? `\nAcceptance Criteria: ${feature.acceptance_criteria}` : ''}]\n\n`
         : ''
 
-      const res = await fetch(`/api/work-items/${feature.id}/messages`, {
+      const messageContent = contextPrefix + content
+
+      // 1. Save user message to DB
+      const saveRes = await fetch(`/api/work-items/${feature.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sender_type: 'user',
           sender_id: 'Lance',
           sender_name: 'Lance',
-          content: contextPrefix + content,
+          content: messageContent,
         }),
       })
 
-      if (!res.ok) throw new Error('Failed to send message')
+      if (saveRes.ok) {
+        const saved = await saveRes.json()
+        setMessages(prev => prev.map(m => m.id === optimistic.id ? saved : m))
+      }
 
-      // Replace optimistic message with real one
-      const saved = await res.json()
-      setMessages(prev => prev.map(m => m.id === optimistic.id ? saved : m))
+      // 2. Stream agent response
+      setIsStreaming(true)
+      setStreamingContent("")
+
+      const history = buildHistory()
+      const streamRes = await fetch(`/api/work-items/${feature.id}/stream`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: messageContent, history }),
+      })
+
+      if (!streamRes.ok) throw new Error(`Stream error: ${streamRes.status}`)
+      if (!streamRes.body) throw new Error('No response body')
+
+      const reader = streamRes.body.getReader()
+      const fullContent = await new Promise<string>((resolve, reject) => {
+        parseSSEStream(
+          reader,
+          (partial) => setStreamingContent(partial),
+          (full) => resolve(full || 'No response generated.')
+        ).catch(reject)
+      })
+
+      setIsStreaming(false)
+      setStreamingContent("")
+
+      // 3. Save agent response to DB
+      const agentName = assignedAgent?.name || feature.assigned_to || 'Agent'
+      const agentId = feature.assigned_to || 'unknown'
+
+      await fetch(`/api/work-items/${feature.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sender_type: 'agent',
+          sender_id: agentId,
+          sender_name: agentName,
+          content: fullContent,
+          metadata: { streamed: true },
+        }),
+      })
+
+      // The realtime subscription will pick up the saved agent message
     } catch (err) {
-      console.error('Error sending bridge message:', err)
+      console.error('Error in streaming chat:', err)
+      setIsStreaming(false)
+      setStreamingContent("")
       // Remove optimistic message on error
       setMessages(prev => prev.filter(m => m.id !== optimistic.id))
-      setNewMessage(content) // Restore the message
+      setNewMessage(content)
     } finally {
       setSending(false)
     }
@@ -720,6 +824,32 @@ function FeatureDetailPanel({
               {messages.map((msg) => (
                 <BridgeChatMessage key={msg.id} msg={msg} agents={agents} />
               ))}
+              {/* Streaming message */}
+              {isStreaming && streamingContent && (
+                <div className="flex gap-2">
+                  <span className="text-sm flex-shrink-0 mt-0.5">{assignedAgent?.emoji || '🤖'}</span>
+                  <div className="max-w-[80%] rounded-lg px-2.5 py-1.5 bg-white/[0.04] border border-white/10">
+                    <div className="flex items-baseline gap-2 mb-0.5">
+                      <span className="text-[10px] font-medium text-white/70">{assignedAgent?.name || 'Agent'}</span>
+                      <Badge className="text-[8px] px-1 py-0 h-3.5 border bg-purple-500/20 text-purple-300 border-purple-500/30">agent</Badge>
+                    </div>
+                    <p className="text-[11px] text-white/70 whitespace-pre-wrap">{streamingContent}</p>
+                  </div>
+                </div>
+              )}
+              {/* Typing indicator */}
+              {sending && !isStreaming && (
+                <div className="flex gap-2">
+                  <span className="text-sm flex-shrink-0 mt-0.5">{assignedAgent?.emoji || '🤖'}</span>
+                  <div className="rounded-lg px-2.5 py-1.5 bg-white/[0.04] border border-white/10">
+                    <div className="flex gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div ref={chatEndRef} />
             </div>
           )}

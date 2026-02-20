@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Increase Vercel function timeout for streaming responses
+export const maxDuration = 60
+
 /**
  * POST /api/chat/send
  *
@@ -14,7 +17,6 @@ import {
   buildAgentSystemPrompt,
   isDirectLLMAgent,
   streamDirectLLM,
-  callGateway,
 } from '@/lib/llm-direct'
 
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
@@ -22,7 +24,7 @@ const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
 
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024 // 10MB per attachment
 
-// ─── MIME / attachment helpers (unchanged) ────────────────────────
+// ─── MIME / attachment helpers ────────────────────────────────────
 
 const MIME_OVERRIDES: Record<string, string> = {
   '.md': 'text/markdown', '.markdown': 'text/markdown',
@@ -56,10 +58,7 @@ interface AttachmentInput {
   url: string
   name?: string
   mimeType?: string
-<<<<<<< Updated upstream
-=======
   base64Data?: string
->>>>>>> Stashed changes
 }
 
 interface HistoryMessage {
@@ -75,9 +74,6 @@ function isImageAttachment(a: AttachmentInput): boolean {
   return a.type === 'image' || (a.mimeType?.startsWith('image/') ?? false)
 }
 
-<<<<<<< Updated upstream
-/** Parse a data:…;base64,… URL into components. */
-=======
 const TEXT_DECODABLE_MIMES = new Set([
   'text/plain', 'text/markdown', 'text/csv', 'text/html', 'text/css',
   'text/javascript', 'text/typescript', 'text/yaml', 'text/toml',
@@ -99,7 +95,6 @@ function decodeBase64ToText(b64: string, maxChars = 50000): string {
   return text
 }
 
->>>>>>> Stashed changes
 function parseDataUrl(url: string): { mediaType: string; base64Data: string } | null {
   const m = url.match(/^data:([^;]+);base64,(.+)$/)
   return m ? { mediaType: m[1], base64Data: m[2] } : null
@@ -118,16 +113,11 @@ async function fetchAsBase64(url: string, fallbackMime?: string): Promise<{ medi
   }
 }
 
-<<<<<<< Updated upstream
-/** Resolve an attachment URL to { mediaType, base64Data }. */
-async function resolveAttachment(a: AttachmentInput) {
-=======
 async function resolveAttachment(a: AttachmentInput) {
   if (a.base64Data) {
     const mediaType = resolveMimeType(a.mimeType || 'application/octet-stream', a.name)
     return { mediaType, base64Data: a.base64Data }
   }
->>>>>>> Stashed changes
   const parsed = parseDataUrl(a.url)
   if (parsed) return parsed
   return fetchAsBase64(a.url, a.mimeType)
@@ -158,7 +148,7 @@ async function flattenAttachmentsToText(
       } else {
         parts.push(`[Attached file: ${att.name || 'unknown'} (${mediaType}, ${Math.round(base64Data.length * 0.75 / 1024)}KB) — binary file.]`)
       }
-    } catch (err) {
+    } catch {
       parts.push(`[Failed to load attachment: ${att.name || 'unknown file'}]`)
     }
   }
@@ -197,27 +187,6 @@ async function buildResponsesBody(
           type: 'input_image',
           source: { type: 'base64', media_type: mediaType, data: base64Data },
         })
-<<<<<<< Updated upstream
-      } else {
-        // Non-image file (PDF, doc, txt, etc.)
-        contentParts.push({
-          type: 'input_file',
-          source: {
-            type: 'base64',
-            media_type: mediaType,
-            data: base64Data,
-            ...(att.name && { filename: att.name }),
-          },
-        })
-      }
-    } catch (err) {
-      console.error('[Chat Send] Failed to process attachment:', att.name, err)
-    }
-  }
-
-  if (message) {
-    contentParts.push({ type: 'input_text', text: message })
-=======
       } else if (isTextDecodable(mediaType)) {
         const textContent = decodeBase64ToText(base64Data)
         contentParts.push({
@@ -249,7 +218,6 @@ async function buildResponsesBody(
     : '')
   if (textContent) {
     contentParts.push({ type: 'input_text', text: textContent })
->>>>>>> Stashed changes
   }
 
   input.push({ type: 'message', role: 'user', content: contentParts })
@@ -305,21 +273,14 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Flatten attachments into the message text for direct LLM
       const fullMessage = await flattenAttachmentsToText(message || '', attachments)
 
-      // Build messages array with history
       const llmMessages = [
         ...history.slice(-20).map((m: HistoryMessage) => ({ role: m.role, content: m.content })),
         { role: 'user', content: fullMessage },
       ]
 
-      const streamResponse = await streamDirectLLM({
-        systemPrompt,
-        messages: llmMessages,
-      })
-
-      return streamResponse
+      return streamDirectLLM({ systemPrompt, messages: llmMessages })
     }
 
     // ── HBx: route through gateway (full tool/memory support) ────
