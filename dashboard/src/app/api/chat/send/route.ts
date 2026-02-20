@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-// Allow large request bodies for file attachments (base64 encoded)
-export const config = {
-  api: { bodyParser: { sizeLimit: '20mb' } },
-}
-
 // Increase Vercel function timeout for streaming responses
 export const maxDuration = 60
 

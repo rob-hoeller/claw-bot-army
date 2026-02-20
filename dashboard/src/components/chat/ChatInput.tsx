@@ -57,8 +57,9 @@ async function uploadFile(
 ): Promise<Attachment> {
   const fileType = classifyFile(file)
 
-  // Always read the raw base64 — we'll send it to the gateway directly
-  const rawBase64 = await fileToRawBase64(file)
+  // Read raw base64 for gateway. Skip for files > 3MB to avoid body size limits.
+  const MAX_INLINE_SIZE = 3 * 1024 * 1024
+  const rawBase64 = file.size <= MAX_INLINE_SIZE ? await fileToRawBase64(file) : undefined
 
   // Try uploading to Supabase Storage for persistence / display
   let supabaseUrl: string | null = null
@@ -83,13 +84,30 @@ async function uploadFile(
     console.warn('Upload failed — using base64 only:', err)
   }
 
+  // For display URL: prefer Supabase, fall back to data URL if we have base64
+  const displayUrl = supabaseUrl
+    || (rawBase64 ? `data:${file.type || 'application/octet-stream'};base64,${rawBase64}` : '')
+
+  if (!displayUrl) {
+    // Large file with no Supabase upload — shouldn't happen but handle gracefully
+    const fallbackBase64 = await fileToRawBase64(file)
+    return {
+      type: fileType,
+      url: `data:${file.type || 'application/octet-stream'};base64,${fallbackBase64}`,
+      name: file.name,
+      size: file.size,
+      mimeType: file.type || 'application/octet-stream',
+      base64Data: fallbackBase64,
+    }
+  }
+
   return {
     type: fileType,
-    url: supabaseUrl || `data:${file.type || 'application/octet-stream'};base64,${rawBase64}`,
+    url: displayUrl,
     name: file.name,
     size: file.size,
     mimeType: file.type || 'application/octet-stream',
-    base64Data: rawBase64,
+    ...(rawBase64 && { base64Data: rawBase64 }),
   }
 }
 
