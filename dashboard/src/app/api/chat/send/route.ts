@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 // Increase Vercel function timeout for streaming responses
-export const maxDuration = 60
+// HBx tool calls (build, commit, push, PR) can take 2-3 minutes
+export const maxDuration = 300
 
 /**
  * POST /api/chat/send
@@ -337,7 +338,45 @@ export async function POST(request: NextRequest) {
     }
 
     if (gatewayResponse.body) {
-      return new Response(gatewayResponse.body, {
+      // Wrap gateway stream with keep-alive pings.
+      // During tool execution, the gateway may go silent for 30-120s.
+      // Without keep-alives, Vercel/browser may kill the connection.
+      const encoder = new TextEncoder()
+      const gatewayReader = gatewayResponse.body.getReader()
+
+      const stream = new ReadableStream({
+        async start(controller) {
+          let keepAliveInterval: ReturnType<typeof setInterval> | null = null
+          let lastDataTime = Date.now()
+
+          // Send SSE comment as keep-alive every 15s of silence
+          keepAliveInterval = setInterval(() => {
+            if (Date.now() - lastDataTime > 14000) {
+              try {
+                controller.enqueue(encoder.encode(': keep-alive\n\n'))
+              } catch {
+                // Stream already closed
+              }
+            }
+          }, 15000)
+
+          try {
+            while (true) {
+              const { done, value } = await gatewayReader.read()
+              if (done) break
+              lastDataTime = Date.now()
+              controller.enqueue(value)
+            }
+          } catch (err) {
+            console.error('[Chat Send] Stream read error:', err)
+          } finally {
+            if (keepAliveInterval) clearInterval(keepAliveInterval)
+            controller.close()
+          }
+        },
+      })
+
+      return new Response(stream, {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',

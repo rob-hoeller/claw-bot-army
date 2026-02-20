@@ -243,11 +243,12 @@ export function ChatPanel({
   const parseSSEStream = async (
     reader: ReadableStreamDefaultReader<Uint8Array>,
     onChunk: (content: string) => void,
-    onDone: (fullContent: string) => void
+    onDone: (fullContent: string, receivedDone: boolean) => void
   ) => {
     const decoder = new TextDecoder()
     let buffer = ""
     let fullContent = ""
+    let receivedDoneSignal = false
 
     try {
       while (true) {
@@ -262,7 +263,8 @@ export function ChatPanel({
           if (line.startsWith('data: ')) {
             const data = line.slice(6)
             if (data === '[DONE]') {
-              onDone(fullContent)
+              receivedDoneSignal = true
+              onDone(fullContent, true)
               return
             }
             try {
@@ -281,10 +283,11 @@ export function ChatPanel({
           }
         }
       }
-      onDone(fullContent)
+      // Stream ended without [DONE] — may be a dropped connection
+      onDone(fullContent, receivedDoneSignal)
     } catch (err) {
       console.error('SSE parsing error:', err)
-      onDone(fullContent)
+      onDone(fullContent, false)
     }
   }
 
@@ -342,9 +345,40 @@ export function ChatPanel({
       parseSSEStream(
         reader,
         (partialContent) => setStreamingContent(partialContent),
-        (fullContent) => {
+        async (fullContent, receivedDone) => {
           setIsStreaming(false)
           setStreamingContent("")
+
+          if (receivedDone || !openclawSessionKey) {
+            resolve(fullContent || "I received your message but couldn't generate a response.")
+            return
+          }
+
+          // Stream ended without [DONE] — likely a dropped connection.
+          // Wait a moment then poll gateway history for the complete response.
+          console.warn('[ChatPanel] Stream ended without [DONE], polling for complete response...')
+          try {
+            // Wait for gateway to finish processing
+            await new Promise(r => setTimeout(r, 3000))
+            const historyRes = await fetch(
+              `/api/chat/history?sessionKey=${encodeURIComponent(openclawSessionKey)}&limit=5`
+            )
+            if (historyRes.ok) {
+              const historyData = await historyRes.json()
+              const lastAssistant = historyData
+                .filter((m: { role: string }) => m.role === 'assistant')
+                .pop()
+              if (lastAssistant?.content && lastAssistant.content.length > fullContent.length) {
+                console.log('[ChatPanel] Recovered complete response from gateway history')
+                resolve(lastAssistant.content)
+                return
+              }
+            }
+          } catch (pollErr) {
+            console.warn('[ChatPanel] Recovery poll failed:', pollErr)
+          }
+
+          // Use whatever we got
           resolve(fullContent || "I received your message but couldn't generate a response.")
         }
       ).catch(reject)
