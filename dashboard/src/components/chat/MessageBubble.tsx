@@ -106,6 +106,35 @@ function AttachmentPreview({
   )
 }
 
+/** Render text with URLs converted to clickable links */
+function AutoLinkedText({ text }: { text: string }) {
+  const urlPattern = /(https?:\/\/[^\s<>"'`)\]]+|www\.[^\s<>"'`)\]]+)/gi
+  const parts = text.split(urlPattern)
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        // Odd-indexed parts are captured URL matches from split
+        if (i % 2 === 1) {
+          const href = part.startsWith('www.') ? `https://${part}` : part
+          return (
+            <a
+              key={i}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-purple-400 hover:text-purple-300 underline underline-offset-2 break-all"
+            >
+              {part}
+            </a>
+          )
+        }
+        return part ? <span key={i}>{part}</span> : null
+      })}
+    </>
+  )
+}
+
 export function MessageBubble({ message, agentName = "Agent", agentEmoji, isStreaming = false }: MessageBubbleProps) {
   const [lightboxImage, setLightboxImage] = useState<{ url: string; name: string } | null>(null)
   
@@ -175,7 +204,7 @@ export function MessageBubble({ message, agentName = "Agent", agentEmoji, isStre
             {/* Text Content */}
             {message.content && (
               <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                {message.content}
+                <AutoLinkedText text={message.content} />
                 {isStreaming && (
                   <span className="inline-block w-2 h-4 ml-0.5 bg-white/70 animate-pulse" />
                 )}
