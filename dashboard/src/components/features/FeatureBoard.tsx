@@ -1013,14 +1013,19 @@ export function FeatureBoard() {
     setFeatures(prev => prev.map(f => f.id === featureId ? { ...f, status: newStatus, updated_at: new Date().toISOString() } : f))
     setSelectedFeature(prev => prev && prev.id === featureId ? { ...prev, status: newStatus } : prev)
 
-    if (supabase) {
-      try {
-        const { error } = await supabase.from('features').update({ status: newStatus, updated_at: new Date().toISOString() }).eq('id', featureId)
-        if (error) throw error
-      } catch (err) {
-        console.error('Error updating status:', err)
-        loadData() // Revert on error
+    try {
+      const res = await fetch(`/api/features/${featureId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `Status update failed: ${res.status}`)
       }
+    } catch (err) {
+      console.error('Error updating status:', err)
+      loadData() // Revert on error
     }
   }, [loadData])
 
