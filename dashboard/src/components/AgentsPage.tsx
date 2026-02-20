@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Bot,
@@ -1083,10 +1083,39 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
     }
   }
 
-  // Global knowledge placeholder (not implemented in this refactor)
-  const globalKnowledgeFiles: AgentFile[] = [
-    { name: "COMPANY", content: "# Company Overview\n\nGlobal knowledge base not yet implemented." },
-  ]
+  // Global knowledge files — live from Supabase
+  const [globalKnowledgeFiles, setGlobalKnowledgeFiles] = useState<AgentFile[]>([])
+
+  useEffect(() => {
+    if (!supabase) return
+    supabase
+      .from("global_knowledge")
+      .select("slug, title, content")
+      .order("slug")
+      .then(({ data, error }) => {
+        if (error || !data) return
+        setGlobalKnowledgeFiles(
+          data.map((r: { slug: string; title: string; content: string }) => ({
+            name: r.slug.toUpperCase().replace(/-/g, "_"),
+            content: r.content || `# ${r.title}\n\nNo content yet.`,
+          }))
+        )
+      })
+  }, [])
+
+  const handleGlobalKnowledgeSave = useCallback(async (fileName: string, content: string) => {
+    if (!supabase) return
+    const slug = fileName.toLowerCase().replace(/_/g, "-")
+    const { error } = await supabase
+      .from("global_knowledge")
+      .update({ content, updated_at: new Date().toISOString() })
+      .eq("slug", slug)
+    if (error) throw error
+    // Update local state
+    setGlobalKnowledgeFiles(prev =>
+      prev.map(f => f.name === fileName ? { ...f, content } : f)
+    )
+  }, [])
 
   const rootAgent = agentTree
   const childAgents = agentTree.children ?? []
@@ -1222,7 +1251,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
               icon={Globe}
               files={globalKnowledgeFiles}
               onClose={() => setShowGlobalKnowledge(false)}
-              onSave={async () => {}}
+              onSave={handleGlobalKnowledgeSave}
             />
           </>
         )}
