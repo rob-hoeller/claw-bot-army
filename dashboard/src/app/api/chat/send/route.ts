@@ -289,14 +289,28 @@ export async function POST(request: NextRequest) {
     }
 
     const systemPrompt = await buildAgentSystemPrompt(agentId)
-    const useResponses = hasAttachments(attachments)
-    const endpoint = useResponses
-      ? `${GATEWAY_URL}/v1/responses`
-      : `${GATEWAY_URL}/v1/chat/completions`
 
-    const requestBody = useResponses
-      ? await buildResponsesBody(message || '', attachments, agentId, history, systemPrompt)
-      : buildChatCompletionsBody(message || '', agentId, history, systemPrompt)
+    // Determine if we need /v1/responses (for images) or can use /v1/chat/completions
+    // The gateway handles chat/completions more reliably for text-only messages.
+    // Only use /v1/responses when there are actual image attachments that need vision.
+    const hasImages = attachments.some((a: AttachmentInput) => isImageAttachment(a))
+    const useResponses = hasImages
+
+    let endpoint: string
+    let requestBody: Record<string, unknown>
+
+    if (useResponses) {
+      endpoint = `${GATEWAY_URL}/v1/responses`
+      requestBody = await buildResponsesBody(message || '', attachments, agentId, history, systemPrompt)
+    } else if (hasAttachments(attachments)) {
+      // Non-image attachments: flatten file content into text and use chat/completions
+      endpoint = `${GATEWAY_URL}/v1/chat/completions`
+      const fullMessage = await flattenAttachmentsToText(message || '', attachments)
+      requestBody = buildChatCompletionsBody(fullMessage, agentId, history, systemPrompt)
+    } else {
+      endpoint = `${GATEWAY_URL}/v1/chat/completions`
+      requestBody = buildChatCompletionsBody(message || '', agentId, history, systemPrompt)
+    }
 
     const headers: Record<string, string> = {
       'Authorization': `Bearer ${GATEWAY_TOKEN}`,
