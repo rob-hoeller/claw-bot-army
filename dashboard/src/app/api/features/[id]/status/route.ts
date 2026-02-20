@@ -27,31 +27,76 @@ export async function PATCH(
 
   try {
     const body = await req.json()
-    const { status } = body
+    const { status, assigned_to } = body
 
-    if (!status || !VALID_STATUSES.includes(status)) {
-      return NextResponse.json(
-        { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` },
-        { status: 400 }
-      )
+    // Build update payload — supports status, assigned_to, or both
+    const updates: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    }
+
+    if (status !== undefined) {
+      if (!VALID_STATUSES.includes(status)) {
+        return NextResponse.json(
+          { error: `Invalid status. Must be one of: ${VALID_STATUSES.join(", ")}` },
+          { status: 400 }
+        )
+      }
+      updates.status = status
+      // Auto-set timestamps
+      if (status === "done") updates.completed_at = new Date().toISOString()
+      if (status === "in_progress" && !body.skipStarted) updates.started_at = new Date().toISOString()
+      if (status === "cancelled") updates.completed_at = new Date().toISOString()
+    }
+
+    if (assigned_to !== undefined) {
+      updates.assigned_to = assigned_to || null
     }
 
     const sb = getSupabase()
     const { data, error } = await sb
       .from("features")
-      .update({ status, updated_at: new Date().toISOString() })
+      .update(updates)
       .eq("id", id)
       .select()
       .single()
 
     if (error) {
-      console.error("[API] Feature status update error:", error)
+      console.error("[API] Feature update error:", error)
       return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    // If reassigned, post a context handoff message to bridge chat
+    if (assigned_to !== undefined && assigned_to) {
+      try {
+        // Fetch recent bridge messages for context
+        const { data: messages } = await sb
+          .from("work_item_messages")
+          .select("sender_name, content, created_at")
+          .eq("work_item_id", id)
+          .order("created_at", { ascending: false })
+          .limit(10)
+
+        const contextSummary = messages && messages.length > 0
+          ? messages.reverse().map(m => `[${m.sender_name}]: ${m.content}`).join("\n")
+          : "No previous messages."
+
+        // Post handoff message
+        await sb.from("work_item_messages").insert({
+          work_item_id: id,
+          sender_type: "orchestrator",
+          sender_id: "HBx",
+          sender_name: "HBx (Orchestrator)",
+          content: `🔄 **Task reassigned to ${assigned_to}**\n\n**Context handoff — recent conversation:**\n${contextSummary}\n\n${assigned_to}, you're now assigned to this task. Review the context above and continue where the previous agent left off.`,
+        })
+      } catch (handoffErr) {
+        // Non-fatal — log but don't fail the update
+        console.error("[API] Handoff message error:", handoffErr)
+      }
     }
 
     return NextResponse.json({ feature: data })
   } catch (err) {
-    console.error("[API] Feature status update exception:", err)
+    console.error("[API] Feature update exception:", err)
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
