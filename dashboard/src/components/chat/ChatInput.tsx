@@ -35,6 +35,21 @@ function fileToBase64(file: File): Promise<string> {
   })
 }
 
+/** Read file as raw base64 string (no data: prefix) */
+function fileToRawBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      // Strip data:...;base64, prefix
+      const base64 = result.split(',')[1] || result
+      resolve(base64)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 async function uploadFile(
   file: File,
   conversationId?: string,
@@ -42,7 +57,11 @@ async function uploadFile(
 ): Promise<Attachment> {
   const fileType = classifyFile(file)
 
-  // Try uploading to Supabase Storage first
+  // Always read the raw base64 — we'll send it to the gateway directly
+  const rawBase64 = await fileToRawBase64(file)
+
+  // Try uploading to Supabase Storage for persistence / display
+  let supabaseUrl: string | null = null
   try {
     const formData = new FormData()
     formData.append('file', file)
@@ -56,27 +75,21 @@ async function uploadFile(
 
     if (response.ok) {
       const data = await response.json()
-      return {
-        type: fileType,
-        url: data.url,
-        name: data.name,
-        size: data.size,
-        mimeType: data.mimeType,
-      }
+      supabaseUrl = data.url
+    } else {
+      console.warn('Upload returned', response.status, '— using base64 only')
     }
-    console.warn('Upload returned', response.status, '— falling back to base64')
   } catch (err) {
-    console.warn('Upload failed — falling back to base64:', err)
+    console.warn('Upload failed — using base64 only:', err)
   }
 
-  // Fallback: convert to base64 data URL
-  const dataUrl = await fileToBase64(file)
   return {
     type: fileType,
-    url: dataUrl,
+    url: supabaseUrl || `data:${file.type || 'application/octet-stream'};base64,${rawBase64}`,
     name: file.name,
     size: file.size,
-    mimeType: file.type,
+    mimeType: file.type || 'application/octet-stream',
+    base64Data: rawBase64,
   }
 }
 

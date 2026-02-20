@@ -6,6 +6,8 @@ export interface Attachment {
   name: string
   size?: number
   mimeType?: string
+  /** Raw base64 data (no data: prefix). Sent to gateway to avoid re-fetching from URL. */
+  base64Data?: string
 }
 
 export interface Message {

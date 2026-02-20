@@ -319,6 +319,7 @@ export function ChatPanel({
           url: a.url,
           name: a.name,
           mimeType: a.mimeType,
+          base64Data: a.base64Data,
         })),
       }),
       signal: abortControllerRef.current.signal,
@@ -375,7 +376,7 @@ export function ChatPanel({
       // Strip base64 data from attachments before persisting (too large for DB)
       if (!isDemoMode && conversation) {
         try {
-          const persistAttachments = attachments.map(a => ({
+          const persistAttachments = attachments.map(({ base64Data: _b64, ...a }) => ({
             ...a,
             url: a.url.startsWith('data:') ? `[base64:${a.mimeType || a.type}]` : a.url,
           }))

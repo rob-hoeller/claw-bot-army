@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Allow large request bodies for file attachments (base64 encoded)
+export const config = {
+  api: { bodyParser: { sizeLimit: '20mb' } },
+}
+
+// Increase Vercel function timeout for streaming responses
+export const maxDuration = 60
+
 /**
  * POST /api/chat/send
  *
@@ -109,6 +117,8 @@ interface AttachmentInput {
   url: string
   name?: string
   mimeType?: string
+  /** Raw base64 data sent from client — avoids re-fetching from URL */
+  base64Data?: string
 }
 
 interface HistoryMessage {
@@ -151,10 +161,17 @@ async function fetchAsBase64(
   }
 }
 
-/** Resolve an attachment URL to { mediaType, base64Data }. */
+/** Resolve an attachment to { mediaType, base64Data }. */
 async function resolveAttachment(a: AttachmentInput) {
+  // Prefer inline base64 from client (avoids re-fetching from Supabase)
+  if (a.base64Data) {
+    const mediaType = resolveMimeType(a.mimeType || 'application/octet-stream', a.name)
+    return { mediaType, base64Data: a.base64Data }
+  }
+  // Fallback: parse data URL
   const parsed = parseDataUrl(a.url)
   if (parsed) return parsed
+  // Last resort: fetch from URL
   return fetchAsBase64(a.url, a.mimeType)
 }
 
@@ -208,11 +225,20 @@ async function buildResponsesBody(
       }
     } catch (err) {
       console.error('[Chat Send] Failed to process attachment:', att.name, err)
+      // Don't silently drop — tell the model about the failed attachment
+      contentParts.push({
+        type: 'input_text',
+        text: `[Failed to load attachment: ${att.name || 'unknown file'}]`,
+      })
     }
   }
 
-  if (message) {
-    contentParts.push({ type: 'input_text', text: message })
+  // Always include a text part — some models need it; default prompt for file-only sends
+  const textContent = message || (attachments.length > 0
+    ? `Please analyze the attached file${attachments.length > 1 ? 's' : ''}.`
+    : '')
+  if (textContent) {
+    contentParts.push({ type: 'input_text', text: textContent })
   }
 
   input.push({ type: 'message', role: 'user', content: contentParts })
