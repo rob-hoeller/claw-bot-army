@@ -478,11 +478,13 @@ function FeatureDetailPanel({
   agents,
   onClose,
   onStatusChange,
+  onReassign,
 }: {
   feature: Feature
   agents: Agent[]
   onClose: () => void
   onStatusChange: (status: Feature['status']) => void
+  onReassign: (agentId: string | null) => void
 }) {
   const [messages, setMessages] = useState<BridgeMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
@@ -491,6 +493,7 @@ function FeatureDetailPanel({
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
   const [activeTab, setActiveTab] = useState<'details' | 'chat'>('details')
+  const [showReassign, setShowReassign] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
   const priority = priorityConfig[feature.priority]
@@ -758,7 +761,31 @@ function FeatureDetailPanel({
               </div>
               <div className="flex items-center gap-1.5">
                 <Bot className="h-3 w-3 text-white/30" /><span className="text-white/50">Assigned:</span>
-                {assignedAgent ? <span className="text-white/80">{assignedAgent.emoji} {assignedAgent.id}</span> : <span className="text-white/40">Unassigned</span>}
+                {showReassign ? (
+                  <select
+                    className="bg-white/10 text-white/80 text-[10px] rounded px-1 py-0.5 border border-white/10 focus:outline-none focus:ring-1 focus:ring-purple-400/50"
+                    value={feature.assigned_to || ''}
+                    onChange={(e) => {
+                      onReassign(e.target.value || null)
+                      setShowReassign(false)
+                    }}
+                    onBlur={() => setShowReassign(false)}
+                    autoFocus
+                  >
+                    <option value="">Unassigned</option>
+                    {agents.map(a => (
+                      <option key={a.id} value={a.id}>{a.emoji} {a.id} — {a.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <button
+                    onClick={() => setShowReassign(true)}
+                    className="text-white/80 hover:text-purple-300 transition-colors cursor-pointer"
+                    title="Click to reassign"
+                  >
+                    {assignedAgent ? <>{assignedAgent.emoji} {assignedAgent.id}</> : <span className="text-white/40">Unassigned — click to assign</span>}
+                  </button>
+                )}
               </div>
               {feature.approved_by && (
                 <div className="flex items-center gap-1.5">
@@ -769,6 +796,21 @@ function FeatureDetailPanel({
                 <Calendar className="h-3 w-3 text-white/30" /><span className="text-white/50">Created:</span><span className="text-white/80">{new Date(feature.created_at).toLocaleDateString()}</span>
               </div>
             </div>
+
+            {/* Cancel button */}
+            {feature.status !== 'cancelled' && feature.status !== 'done' && (
+              <button
+                onClick={() => {
+                  if (window.confirm('Cancel this feature? It will be removed from the board.')) {
+                    onStatusChange('cancelled')
+                  }
+                }}
+                className="mt-2 flex items-center gap-1 text-[10px] text-red-400/60 hover:text-red-400 transition-colors"
+              >
+                <X className="h-3 w-3" />
+                Cancel Feature
+              </button>
+            )}
             {feature.labels && feature.labels.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {feature.labels.map((label) => (<span key={label} className="px-1.5 py-0.5 text-[9px] rounded bg-white/5 text-white/50">{label}</span>))}
@@ -904,14 +946,22 @@ function DroppableColumn({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const Icon = column.icon
-  const columnFeatures = features.filter(f => f.status === column.id)
+  const [showAllDone, setShowAllDone] = useState(false)
+  const DONE_DISPLAY_LIMIT = 10
+
+  const allColumnFeatures = features.filter(f => f.status === column.id)
+  // For Done column, show only last N unless expanded
+  const columnFeatures = column.id === 'done' && !showAllDone && allColumnFeatures.length > DONE_DISPLAY_LIMIT
+    ? allColumnFeatures.slice(0, DONE_DISPLAY_LIMIT)
+    : allColumnFeatures
+  const hiddenCount = allColumnFeatures.length - columnFeatures.length
 
   return (
     <div className="flex-1 min-w-[180px] max-w-[220px]">
       <div className="flex items-center gap-1.5 mb-2 px-1">
         <Icon className={cn("h-3 w-3", column.color)} />
         <h3 className="text-[11px] font-medium text-white/80">{column.label}</h3>
-        <span className="text-[10px] text-white/30 bg-white/5 px-1 rounded">{columnFeatures.length}</span>
+        <span className="text-[10px] text-white/30 bg-white/5 px-1 rounded">{allColumnFeatures.length}</span>
       </div>
 
       <div
@@ -933,7 +983,25 @@ function DroppableColumn({
           ))}
         </SortableContext>
 
-        {columnFeatures.length === 0 && !isOver && (
+        {hiddenCount > 0 && (
+          <button
+            onClick={() => setShowAllDone(true)}
+            className="w-full p-1.5 text-[10px] text-white/40 hover:text-white/60 bg-white/5 hover:bg-white/10 rounded transition-all"
+          >
+            Show {hiddenCount} more archived items
+          </button>
+        )}
+
+        {showAllDone && allColumnFeatures.length > DONE_DISPLAY_LIMIT && (
+          <button
+            onClick={() => setShowAllDone(false)}
+            className="w-full p-1.5 text-[10px] text-white/40 hover:text-white/60 bg-white/5 hover:bg-white/10 rounded transition-all"
+          >
+            Collapse
+          </button>
+        )}
+
+        {allColumnFeatures.length === 0 && !isOver && (
           <div className="p-2 rounded border border-dashed border-white/10 text-center">
             <p className="text-[10px] text-white/20">Empty</p>
           </div>
@@ -1025,6 +1093,27 @@ export function FeatureBoard() {
       }
     } catch (err) {
       console.error('Error updating status:', err)
+      loadData() // Revert on error
+    }
+  }, [loadData])
+
+  const handleReassign = useCallback(async (featureId: string, newAgentId: string | null) => {
+    // Optimistic update
+    setFeatures(prev => prev.map(f => f.id === featureId ? { ...f, assigned_to: newAgentId, updated_at: new Date().toISOString() } : f))
+    setSelectedFeature(prev => prev && prev.id === featureId ? { ...prev, assigned_to: newAgentId } : prev)
+
+    try {
+      const res = await fetch(`/api/features/${featureId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ assigned_to: newAgentId }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `Reassign failed: ${res.status}`)
+      }
+    } catch (err) {
+      console.error('Error reassigning:', err)
       loadData() // Revert on error
     }
   }, [loadData])
@@ -1151,6 +1240,7 @@ export function FeatureBoard() {
               agents={agents}
               onClose={() => setSelectedFeature(null)}
               onStatusChange={(status) => handleStatusChange(selectedFeature.id, status)}
+              onReassign={(agentId) => handleReassign(selectedFeature.id, agentId)}
             />
           </>
         )}
