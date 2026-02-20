@@ -1,82 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+// Increase Vercel function timeout for streaming responses
+export const maxDuration = 60
+
 /**
  * POST /api/chat/send
  *
- * Forwards messages to the OpenClaw Gateway.
- * - Text-only messages → /v1/chat/completions
- * - Messages with attachments (images/files) → /v1/responses
+ * Routes agent chat messages:
+ * - HBx (main) → OpenClaw Gateway (full tool/memory support)
+ * - Sub-agents → Anthropic API directly (correct persona, no gateway override)
  *
- * Why two endpoints:
- *   /v1/chat/completions strips image_url parts (extractTextContent).
- *   /v1/responses supports input_image (base64/URL) and input_file (base64/URL).
- *
- * Streaming formats differ and ChatPanel's parseSSEStream handles both:
- *   completions: choices[0].delta.content
- *   responses:   event "response.output_text.delta" → delta field
+ * Streaming formats are normalized to OpenAI SSE format for ChatPanel compatibility.
  */
 
-import { createClient } from '@supabase/supabase-js'
+import {
+  buildAgentSystemPrompt,
+  isDirectLLMAgent,
+  streamDirectLLM,
+} from '@/lib/llm-direct'
 
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-function getSupabase() {
-  return createClient(supabaseUrl, supabaseServiceKey)
-}
-
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024 // 10MB per attachment
 
-// ─── Build agent system prompt from Supabase config files ────────
-async function buildAgentSystemPrompt(agentId: string): Promise<string | null> {
-  const sb = getSupabase()
+// ─── MIME / attachment helpers ────────────────────────────────────
 
-  const { data: agent, error } = await sb
-    .from('agents')
-    .select('id, name, role, soul_md, identity_md, tools_md, user_md, memory_md, agents_md')
-    .eq('id', agentId)
-    .single()
-
-  if (error || !agent) {
-    console.error(`[Chat Send] Failed to fetch agent config for ${agentId}:`, error)
-    return null
-  }
-
-  const parts: string[] = []
-
-  if (agent.soul_md) {
-    parts.push(agent.soul_md)
-  }
-  if (agent.identity_md) {
-    parts.push(`\n---\n# Identity Reference\n${agent.identity_md}`)
-  }
-  if (agent.tools_md) {
-    parts.push(`\n---\n# Tools & Capabilities\n${agent.tools_md}`)
-  }
-  if (agent.user_md) {
-    parts.push(`\n---\n# User Context\n${agent.user_md}`)
-  }
-  if (agent.agents_md) {
-    parts.push(`\n---\n# Agent Network\n${agent.agents_md}`)
-  }
-  if (agent.memory_md) {
-    const memoryTruncated = agent.memory_md.length > 2000
-      ? agent.memory_md.slice(0, 2000) + '\n\n[Memory truncated...]'
-      : agent.memory_md
-    parts.push(`\n---\n# Memory\n${memoryTruncated}`)
-  }
-
-  if (parts.length === 0) {
-    return `You are ${agent.name} (${agentId}), role: ${agent.role || 'AI Agent'}. Respond helpfully and stay in character.`
-  }
-
-  return parts.join('\n')
-}
-
-/** Fix MIME types when browser sends application/octet-stream */
 const MIME_OVERRIDES: Record<string, string> = {
   '.md': 'text/markdown', '.markdown': 'text/markdown',
   '.txt': 'text/plain', '.csv': 'text/csv', '.log': 'text/plain',
@@ -105,20 +54,17 @@ function resolveMimeType(raw: string, filename?: string): string {
 }
 
 interface AttachmentInput {
-  type: string  // 'image' | 'video' | 'file'
+  type: string
   url: string
   name?: string
   mimeType?: string
+  base64Data?: string
 }
 
 interface HistoryMessage {
   role: 'user' | 'assistant'
   content: string
 }
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 function hasAttachments(attachments: AttachmentInput[]): boolean {
   return attachments.length > 0
@@ -128,17 +74,33 @@ function isImageAttachment(a: AttachmentInput): boolean {
   return a.type === 'image' || (a.mimeType?.startsWith('image/') ?? false)
 }
 
-/** Parse a data:…;base64,… URL into components. */
+const TEXT_DECODABLE_MIMES = new Set([
+  'text/plain', 'text/markdown', 'text/csv', 'text/html', 'text/css',
+  'text/javascript', 'text/typescript', 'text/yaml', 'text/toml',
+  'text/x-python', 'text/x-ruby', 'text/x-go', 'text/x-rust', 'text/x-java',
+  'text/x-c', 'text/x-c++', 'text/x-shellscript', 'text/x-sql',
+  'application/json', 'application/xml', 'application/javascript',
+])
+
+function isTextDecodable(mime: string): boolean {
+  return TEXT_DECODABLE_MIMES.has(mime) || mime.startsWith('text/')
+}
+
+function decodeBase64ToText(b64: string, maxChars = 50000): string {
+  const buf = Buffer.from(b64, 'base64')
+  let text = buf.toString('utf-8')
+  if (text.length > maxChars) {
+    text = text.slice(0, maxChars) + '\n\n[... content truncated at ' + maxChars + ' characters ...]'
+  }
+  return text
+}
+
 function parseDataUrl(url: string): { mediaType: string; base64Data: string } | null {
   const m = url.match(/^data:([^;]+);base64,(.+)$/)
   return m ? { mediaType: m[1], base64Data: m[2] } : null
 }
 
-/** Fetch a remote URL and return base64 + media type. */
-async function fetchAsBase64(
-  url: string,
-  fallbackMime?: string
-): Promise<{ mediaType: string; base64Data: string }> {
+async function fetchAsBase64(url: string, fallbackMime?: string): Promise<{ mediaType: string; base64Data: string }> {
   const res = await fetch(url)
   if (!res.ok) throw new Error(`Fetch failed: ${res.status}`)
   const buf = await res.arrayBuffer()
@@ -151,16 +113,50 @@ async function fetchAsBase64(
   }
 }
 
-/** Resolve an attachment URL to { mediaType, base64Data }. */
 async function resolveAttachment(a: AttachmentInput) {
+  if (a.base64Data) {
+    const mediaType = resolveMimeType(a.mimeType || 'application/octet-stream', a.name)
+    return { mediaType, base64Data: a.base64Data }
+  }
   const parsed = parseDataUrl(a.url)
   if (parsed) return parsed
   return fetchAsBase64(a.url, a.mimeType)
 }
 
-// ---------------------------------------------------------------------------
-// Request body builders
-// ---------------------------------------------------------------------------
+// ─── Flatten attachments into text for direct LLM calls ──────────
+async function flattenAttachmentsToText(
+  message: string,
+  attachments: AttachmentInput[]
+): Promise<string> {
+  if (attachments.length === 0) return message
+
+  const parts: string[] = []
+  if (message) parts.push(message)
+
+  for (const att of attachments) {
+    try {
+      const { mediaType: rawMime, base64Data } = await resolveAttachment(att)
+      const mediaType = resolveMimeType(rawMime, att.name)
+
+      if (isImageAttachment(att) || mediaType.startsWith('image/')) {
+        parts.push(`[Image attached: ${att.name || 'image'} (${mediaType}) — image analysis not available in direct mode]`)
+      } else if (isTextDecodable(mediaType)) {
+        const textContent = decodeBase64ToText(base64Data)
+        parts.push(`--- File: ${att.name || 'unknown'} (${mediaType}) ---\n${textContent}\n--- End of file ---`)
+      } else if (mediaType === 'application/pdf') {
+        parts.push(`[Attached PDF: ${att.name || 'document.pdf'} — PDF content extraction not yet supported.]`)
+      } else {
+        parts.push(`[Attached file: ${att.name || 'unknown'} (${mediaType}, ${Math.round(base64Data.length * 0.75 / 1024)}KB) — binary file.]`)
+      }
+    } catch {
+      parts.push(`[Failed to load attachment: ${att.name || 'unknown file'}]`)
+    }
+  }
+
+  return parts.join('\n\n')
+}
+
+// ─── Gateway request body builders (for HBx only) ────────────────
 
 async function buildResponsesBody(
   message: string,
@@ -171,17 +167,14 @@ async function buildResponsesBody(
 ) {
   const input: Array<Record<string, unknown>> = []
 
-  // System prompt with agent persona
   if (systemPrompt) {
     input.push({ type: 'message', role: 'system', content: systemPrompt })
   }
 
-  // Conversation history
   for (const msg of history.slice(-20)) {
     input.push({ type: 'message', role: msg.role, content: msg.content })
   }
 
-  // User message with attachment parts
   const contentParts: Array<Record<string, unknown>> = []
 
   for (const att of attachments) {
@@ -194,25 +187,37 @@ async function buildResponsesBody(
           type: 'input_image',
           source: { type: 'base64', media_type: mediaType, data: base64Data },
         })
-      } else {
-        // Non-image file (PDF, doc, txt, etc.)
+      } else if (isTextDecodable(mediaType)) {
+        const textContent = decodeBase64ToText(base64Data)
         contentParts.push({
-          type: 'input_file',
-          source: {
-            type: 'base64',
-            media_type: mediaType,
-            data: base64Data,
-            ...(att.name && { filename: att.name }),
-          },
+          type: 'input_text',
+          text: `--- File: ${att.name || 'unknown'} (${mediaType}) ---\n${textContent}\n--- End of file ---`,
+        })
+      } else if (mediaType === 'application/pdf') {
+        contentParts.push({
+          type: 'input_text',
+          text: `[Attached PDF: ${att.name || 'document.pdf'} — PDF content extraction not yet supported.]`,
+        })
+      } else {
+        contentParts.push({
+          type: 'input_text',
+          text: `[Attached file: ${att.name || 'unknown'} (${mediaType}, ${Math.round(base64Data.length * 0.75 / 1024)}KB) — binary file.]`,
         })
       }
     } catch (err) {
-      console.error('[Chat Send] Failed to process attachment:', att.name, err)
+      console.error('[Chat Send] Failed to process attachment:', (att as AttachmentInput).name, err)
+      contentParts.push({
+        type: 'input_text',
+        text: `[Failed to load attachment: ${att.name || 'unknown file'}]`,
+      })
     }
   }
 
-  if (message) {
-    contentParts.push({ type: 'input_text', text: message })
+  const textContent = message || (attachments.length > 0
+    ? `Please analyze the attached file${attachments.length > 1 ? 's' : ''}.`
+    : '')
+  if (textContent) {
+    contentParts.push({ type: 'input_text', text: textContent })
   }
 
   input.push({ type: 'message', role: 'user', content: contentParts })
@@ -228,23 +233,17 @@ function buildChatCompletionsBody(
 ) {
   const messages: Array<{ role: string; content: string }> = []
 
-  // Inject agent persona as system message
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt })
   }
 
-  // Conversation history
   messages.push(...history.slice(-20).map(m => ({ role: m.role, content: m.content })))
-
-  // Current user message
   messages.push({ role: 'user', content: message })
 
   return { model: `openclaw:${agentId}`, messages, stream: true }
 }
 
-// ---------------------------------------------------------------------------
-// Route handler
-// ---------------------------------------------------------------------------
+// ─── Route handler ───────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   try {
@@ -255,7 +254,6 @@ export async function POST(request: NextRequest) {
       sessionKey,
       history = [],
       attachments = [],
-      stream = true,
     } = body
 
     if (!message && attachments.length === 0) {
@@ -264,13 +262,33 @@ export async function POST(request: NextRequest) {
     if (!agentId) {
       return NextResponse.json({ error: 'Missing agentId' }, { status: 400 })
     }
+
+    // ── Sub-agents: call Anthropic directly (correct persona) ────
+    if (isDirectLLMAgent(agentId)) {
+      const systemPrompt = await buildAgentSystemPrompt(agentId)
+      if (!systemPrompt) {
+        return NextResponse.json(
+          { error: `No persona config found for agent ${agentId}` },
+          { status: 404 }
+        )
+      }
+
+      const fullMessage = await flattenAttachmentsToText(message || '', attachments)
+
+      const llmMessages = [
+        ...history.slice(-20).map((m: HistoryMessage) => ({ role: m.role, content: m.content })),
+        { role: 'user', content: fullMessage },
+      ]
+
+      return streamDirectLLM({ systemPrompt, messages: llmMessages })
+    }
+
+    // ── HBx: route through gateway (full tool/memory support) ────
     if (!GATEWAY_TOKEN) {
       return NextResponse.json({ error: 'Gateway token not configured' }, { status: 500 })
     }
 
-    // Fetch agent persona from Supabase
     const systemPrompt = await buildAgentSystemPrompt(agentId)
-
     const useResponses = hasAttachments(attachments)
     const endpoint = useResponses
       ? `${GATEWAY_URL}/v1/responses`
@@ -297,14 +315,14 @@ export async function POST(request: NextRequest) {
 
     if (!gatewayResponse.ok) {
       const errText = await gatewayResponse.text()
-      console.error(`[Chat Send] ${useResponses ? '/v1/responses' : '/v1/chat/completions'} error:`, gatewayResponse.status, errText)
+      console.error(`[Chat Send] Gateway error:`, gatewayResponse.status, errText)
       return NextResponse.json(
         { error: `Gateway error: ${gatewayResponse.status}` },
         { status: gatewayResponse.status }
       )
     }
 
-    if (stream && gatewayResponse.body) {
+    if (gatewayResponse.body) {
       return new Response(gatewayResponse.body, {
         headers: {
           'Content-Type': 'text/event-stream',
@@ -314,7 +332,6 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Non-streaming fallback
     const data = await gatewayResponse.json()
     const content = useResponses
       ? data.output?.[0]?.content?.[0]?.text || ''
