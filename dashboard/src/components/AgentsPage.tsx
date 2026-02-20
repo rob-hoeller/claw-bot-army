@@ -141,7 +141,7 @@ function AgentCard({
           ) : (
             <Clock className="h-2.5 w-2.5 mr-0.5" />
           )}
-          {agent.status}
+          {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
         </Badge>
       </div>
     </motion.button>
@@ -483,7 +483,7 @@ function AgentDetailPanel({
   onClose: () => void
   defaultUserId?: string
 }) {
-  const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'status' | 'cron' | 'memory'>('chat')
+  const [activeTab, setActiveTab] = useState<'chat' | 'files' | 'cron' | 'memory'>('chat')
   const [activeUser, setActiveUser] = useState(defaultUserId || chatUsers[0].id)
   const [activeFile, setActiveFile] = useState("SOUL")
   const [isExpanded, setIsExpanded] = useState(false)
@@ -624,7 +624,6 @@ function AgentDetailPanel({
   const tabs = [
     { id: 'chat' as const, label: 'Chat', icon: MessageSquare },
     { id: 'files' as const, label: 'Files', icon: FileText },
-    { id: 'status' as const, label: 'Status', icon: Activity },
     { id: 'cron' as const, label: 'Cron', icon: Clock },
     { id: 'memory' as const, label: 'Memory', icon: Brain },
   ]
@@ -655,7 +654,7 @@ function AgentDetailPanel({
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold text-white">{agent.id}</h2>
               <Badge variant={agent.status === "active" ? "success" : "warning"}>
-                {agent.status}
+                {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
               </Badge>
               {isReadOnly && (
                 <Badge variant="outline" className="text-[10px] text-yellow-400 border-yellow-400/30">
@@ -663,7 +662,7 @@ function AgentDetailPanel({
                 </Badge>
               )}
             </div>
-            <p className="text-sm text-white/50">{agent.role}</p>
+            <p className="text-sm text-white/50">{agent.role} · {agent.dept}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -861,37 +860,6 @@ function AgentDetailPanel({
                   </pre>
                 </div>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* Status Tab */}
-        {activeTab === 'status' && (
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
-                <h4 className="text-sm font-medium text-white mb-3">Agent Status</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-xs">
-                    <span className="text-white/40">Status:</span>
-                    <Badge variant={agent.status === "active" ? "success" : "warning"}>
-                      {agent.status}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-white/40">Department:</span>
-                    <span className="text-white/70">{agent.dept}</span>
-                  </div>
-                  <div className="flex justify-between text-xs">
-                    <span className="text-white/40">ID:</span>
-                    <span className="text-white/70 font-mono">{agent.id}</span>
-                  </div>
-                </div>
-              </div>
-              <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
-                <h4 className="text-sm font-medium text-white mb-3">Gateway Connection</h4>
-                <p className="text-xs text-white/40">Status information will appear when connected.</p>
-              </div>
             </div>
           </div>
         )}
