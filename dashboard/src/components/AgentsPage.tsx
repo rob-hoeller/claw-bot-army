@@ -95,6 +95,9 @@ function AgentCard({
       'HBx_IN1': '📐',
       'HBx_IN2': '🏭',
       'HBx_IN3': '🔬',
+      'HBx_IN4': '🛠️',
+      'HBx_IN5': '🎨',
+      'HBx_IN6': '🧪',
       'HBx_SP1': '🛟',
     }
     return emojiMap[agent.id] || '🤖'
@@ -616,6 +619,9 @@ function AgentDetailPanel({
       'HBx_IN1': '📐',
       'HBx_IN2': '🏭',
       'HBx_IN3': '🔬',
+      'HBx_IN4': '🛠️',
+      'HBx_IN5': '🎨',
+      'HBx_IN6': '🧪',
       'HBx_SP1': '🛟',
     }
     return emojiMap[agent.id] || '🤖'
@@ -994,6 +1000,22 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
         dept: "Innovation",
         status: "standby",
         emoji: "🔬",
+      },
+      {
+        id: "HBx_IN5",
+        name: "UI/UX Expert",
+        role: "UI/UX Design & User Experience",
+        dept: "Innovation",
+        status: "active",
+        emoji: "🎨",
+      },
+      {
+        id: "HBx_IN6",
+        name: "QA Engineer",
+        role: "Quality Assurance & Testing",
+        dept: "Innovation",
+        status: "active",
+        emoji: "🧪",
       },
       {
         id: "HBx_SP1",
