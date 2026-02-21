@@ -11,10 +11,13 @@ function getSupabase() {
 }
 
 const VALID_STATUSES = [
-  "backlog",
-  "planned",
+  "planning",
+  "design_review",
   "in_progress",
+  "qa_review",
   "review",
+  "approved",
+  "pr_submitted",
   "done",
   "cancelled",
 ]
