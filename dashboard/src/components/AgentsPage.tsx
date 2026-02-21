@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { ChatPanel } from "@/components/chat"
 import { ActivityFeed, ActivityItemData } from "@/components/activity"
-import { AgentStatusBadge, useAgentStatus } from "@/components/agents"
+import { AgentStatusBadge, useAgentStatus, DeploymentStatusBadge } from "@/components/agents"
 import { supabase } from "@/lib/supabase"
 import { useMemoryLogs } from "@/hooks/useMemoryLogs"
 
@@ -132,17 +132,7 @@ function AgentCard({
       </p>
       <p className="text-xs text-white/50 mt-0.5 text-center line-clamp-2">{agent.role}</p>
       <div className="flex items-center gap-2 mt-2">
-        <Badge
-          variant={agent.status === "active" ? "success" : "warning"}
-          className="text-[10px] px-1.5 py-0"
-        >
-          {agent.status === "active" ? (
-            <CheckCircle2 className="h-2.5 w-2.5 mr-0.5" />
-          ) : (
-            <Clock className="h-2.5 w-2.5 mr-0.5" />
-          )}
-          {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
-        </Badge>
+        <DeploymentStatusBadge status={agent.status} size="sm" />
       </div>
     </motion.button>
   )
@@ -653,9 +643,7 @@ function AgentDetailPanel({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold text-white">{agent.id}</h2>
-              <Badge variant={agent.status === "active" ? "success" : "warning"}>
-                {agent.status.charAt(0).toUpperCase() + agent.status.slice(1)}
-              </Badge>
+              <DeploymentStatusBadge status={agent.status} size="md" />
               {isReadOnly && (
                 <Badge variant="outline" className="text-[10px] text-yellow-400 border-yellow-400/30">
                   View Only
