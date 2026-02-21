@@ -11,14 +11,14 @@ interface DeploymentStatusBadgeProps {
   className?: string
 }
 
-const STATUS_CONFIG: Record<string, { dot: string; text: string; label: string; pulse: boolean }> = {
-  active:    { dot: "bg-emerald-500", text: "text-emerald-400", label: "Active",    pulse: false },
-  deploying: { dot: "bg-yellow-500",  text: "text-yellow-400",  label: "Deploying", pulse: true  },
-  standby:   { dot: "bg-zinc-500",    text: "text-zinc-400",    label: "Standby",   pulse: false },
-  inactive:  { dot: "bg-zinc-500",    text: "text-zinc-400",    label: "Inactive",  pulse: false },
+const STATUS_CONFIG: Record<string, { dot: string; text: string; label: string; pulse: boolean; pill: string }> = {
+  active:    { dot: "bg-emerald-500", text: "text-emerald-400", label: "Active",    pulse: false, pill: "bg-emerald-500/10" },
+  deploying: { dot: "bg-yellow-500",  text: "text-yellow-400",  label: "Deploying", pulse: true,  pill: "bg-yellow-500/10"  },
+  standby:   { dot: "bg-zinc-500",    text: "text-zinc-400",    label: "Inactive",  pulse: false, pill: "bg-zinc-500/10"    },
+  inactive:  { dot: "bg-zinc-500",    text: "text-zinc-400",    label: "Inactive",  pulse: false, pill: "bg-zinc-500/10"    },
 }
 
-const UNKNOWN_CONFIG = { dot: "bg-zinc-600", text: "text-zinc-500", label: "Unknown", pulse: false }
+const UNKNOWN_CONFIG = { dot: "bg-zinc-600", text: "text-zinc-500", label: "Unknown", pulse: false, pill: "bg-zinc-600/10" }
 
 export function DeploymentStatusBadge({ status, size = "sm", className }: DeploymentStatusBadgeProps) {
   const config = (status && STATUS_CONFIG[status]) || UNKNOWN_CONFIG
@@ -32,7 +32,7 @@ export function DeploymentStatusBadge({ status, size = "sm", className }: Deploy
       className={cn(
         "inline-flex items-center",
         isSm ? "gap-1" : "gap-1.5 rounded-full px-2 py-0.5",
-        !isSm && `${config.dot.replace("bg-", "bg-")}/10`,
+        !isSm && config.pill,
         className
       )}
     >

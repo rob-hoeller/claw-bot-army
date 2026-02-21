@@ -7,7 +7,6 @@ import {
   X,
   ChevronDown,
   ChevronRight,
-  CheckCircle2,
   Clock,
   Pencil,
   Save,
