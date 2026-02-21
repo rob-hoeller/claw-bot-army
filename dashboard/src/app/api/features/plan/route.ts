@@ -1,53 +1,61 @@
 import { NextRequest, NextResponse } from "next/server"
+import { buildAgentSystemPrompt, streamDirectLLM } from "@/lib/llm-direct"
+
+export const maxDuration = 60
+
+const PLANNING_CONTEXT = `
+You are helping the user plan a new feature. Guide them through:
+1. Problem definition — what problem does this solve?
+2. User impact — who benefits and how?
+3. Scope — what's in/out?
+4. Acceptance criteria — how do we know it's done?
+5. Priority assessment
+
+When you have enough information, summarize the feature spec in a structured format
+the user can approve. Use markdown with clear sections.
+`
+
+interface PlanMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+interface PlanRequestBody {
+  messages: PlanMessage[]
+  featureContext?: { title?: string; description?: string }
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-    const { messages } = body
+    const body: PlanRequestBody = await req.json()
+    const { messages, featureContext } = body
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: "messages array required" }, { status: 400 })
     }
 
-    const lastUserMessage = [...messages].reverse().find((m: { role: string }) => m.role === "user")
+    const lastUserMessage = [...messages].reverse().find(m => m.role === "user")
     if (!lastUserMessage) {
       return NextResponse.json({ error: "No user message found" }, { status: 400 })
     }
 
-    // Try to extract structured data from the conversation
-    const content = lastUserMessage.content.toLowerCase()
-    const extracted: Record<string, unknown> = {}
-
-    // Simple keyword-based extraction (works without LLM)
-    if (content.includes("urgent") || content.includes("asap")) {
-      extracted.priority = "urgent"
-    } else if (content.includes("high priority") || content.includes("important")) {
-      extracted.priority = "high"
+    // Build system prompt from IN1's Supabase persona + planning context
+    let systemPrompt = await buildAgentSystemPrompt('HBx_IN1')
+    if (!systemPrompt) {
+      systemPrompt = "You are IN1, the Product Architect. You help users plan and structure features."
     }
 
-    // Extract potential labels
-    const labelKeywords = ["ui", "api", "core", "infrastructure", "sales", "support", "innovation", "bug", "security"]
-    const foundLabels = labelKeywords.filter(l => content.includes(l))
-    if (foundLabels.length > 0) extracted.labels = foundLabels
+    systemPrompt += `\n\n---\n# Planning Mode\n${PLANNING_CONTEXT}`
 
-    // Generate a helpful response
-    const messageCount = messages.filter((m: { role: string }) => m.role === "user").length
-
-    let responseMessage: string
-    if (messageCount === 1) {
-      responseMessage = `Got it! That sounds like a solid feature idea.\n\nA few questions to help refine this:\n1. **Who is this for?** (which users or agents)\n2. **What's the priority?** (low/medium/high/urgent)\n3. **Any specific acceptance criteria?**\n\nOr if you're ready, switch to the **Form** tab to create it now.`
-    } else if (messageCount === 2) {
-      responseMessage = `Great details! I'd suggest:\n- Setting clear acceptance criteria\n- Identifying which agent should own the build\n- Defining the scope boundaries\n\nWhen you're ready, switch to the **Form** tab — I've pre-filled what I could from our conversation.`
-    } else {
-      responseMessage = `I think we have enough context. Switch to the **Form** tab to create this feature. I've extracted what I could from our chat.`
+    if (featureContext?.title || featureContext?.description) {
+      systemPrompt += `\n\n# Current Feature Context`
+      if (featureContext.title) systemPrompt += `\nTitle: ${featureContext.title}`
+      if (featureContext.description) systemPrompt += `\nDescription: ${featureContext.description}`
     }
 
-    return NextResponse.json({
-      message: responseMessage,
-      extracted: Object.keys(extracted).length > 0 ? extracted : undefined,
-    })
+    return await streamDirectLLM({ systemPrompt, messages })
   } catch (err) {
-    console.error("[API] Plan error:", err)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const message = err instanceof Error ? err.message : "Internal server error"
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

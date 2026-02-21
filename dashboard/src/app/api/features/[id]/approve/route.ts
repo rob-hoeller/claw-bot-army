@@ -51,6 +51,16 @@ export async function POST(
       updates.approved_at = new Date().toISOString()
     }
 
+    // Auto-assign based on pipeline stage transitions
+    const autoAssignMap: Record<string, string> = {
+      design_review: 'HBx_IN5',   // spec approved → design agent
+      in_progress: 'HBx_IN2',     // design approved → build agent
+      review: 'HBx',              // QA passed → orchestrator review
+    }
+    if (autoAssignMap[target_status]) {
+      updates.assigned_to = autoAssignMap[target_status]
+    }
+
     if (target_status === "in_progress") {
       updates.started_at = new Date().toISOString()
     }
@@ -81,6 +91,31 @@ export async function POST(
       })
     } catch (msgErr) {
       console.error("[API] Approval message error:", msgErr)
+    }
+
+    // Fire-and-forget gateway notification for pipeline routing
+    const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL
+    const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
+    if (GATEWAY_URL && GATEWAY_TOKEN && data) {
+      const notifyStatuses = ['design_review', 'in_progress', 'review']
+      if (notifyStatuses.includes(target_status)) {
+        fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'openclaw:HBx',
+            messages: [{
+              role: 'user',
+              content: `Feature "${data.title}" (${id}) has been approved and moved to ${target_status.replace(/_/g, ' ')}. It has been auto-assigned to ${autoAssignMap[target_status] || 'the next agent'}. Please route accordingly.`,
+            }],
+          }),
+        }).catch(() => {
+          // Gateway notification is best-effort
+        })
+      }
     }
 
     return NextResponse.json({ feature: data })

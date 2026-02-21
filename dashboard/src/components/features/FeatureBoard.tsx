@@ -371,59 +371,136 @@ function CreateFeaturePanel({
   const [labels, setLabels] = useState("")
   const [saving, setSaving] = useState(false)
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([
-    { role: 'assistant', content: "👋 I'm the Planning Assistant. Describe the feature you want to build and I'll help structure it.\n\nWhat problem are you trying to solve?" },
+    { role: 'assistant', content: "👋 I'm **IN1** — your Product Architect. Let's plan this feature together.\n\nWhat problem are you looking to solve?" },
   ])
   const [chatInput, setChatInput] = useState("")
   const [chatting, setChatting] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
+  const [streamingContent, setStreamingContent] = useState("")
   const [mode, setMode] = useState<'chat' | 'form'>('chat')
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
+  }, [chatMessages, streamingContent])
+
+  const assistantMessageCount = chatMessages.filter(m => m.role === 'assistant').length
 
   const handleChatSend = async () => {
-    if (!chatInput.trim() || chatting) return
+    if (!chatInput.trim() || chatting || isStreaming) return
     const msg = chatInput.trim()
     setChatInput("")
-    setChatMessages(prev => [...prev, { role: 'user', content: msg }])
+    const updatedMessages = [...chatMessages, { role: 'user' as const, content: msg }]
+    setChatMessages(updatedMessages)
     setChatting(true)
 
     try {
-      // Try to get AI-structured response
+      abortControllerRef.current = new AbortController()
       const res = await fetch('/api/features/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...chatMessages, { role: 'user', content: msg }],
-        }),
+        body: JSON.stringify({ messages: updatedMessages }),
+        signal: abortControllerRef.current.signal,
       })
 
-      if (res.ok) {
-        const data = await res.json()
-        setChatMessages(prev => [...prev, { role: 'assistant', content: data.message }])
-        // If AI extracted structured data, pre-fill the form
-        if (data.extracted) {
-          if (data.extracted.title) setTitle(data.extracted.title)
-          if (data.extracted.description) setDescription(data.extracted.description)
-          if (data.extracted.priority) setPriority(data.extracted.priority)
-          if (data.extracted.labels) setLabels(data.extracted.labels.join(', '))
-        }
-      } else {
-        // Fallback: simple echo
+      if (!res.ok || !res.body) {
         setChatMessages(prev => [...prev, {
           role: 'assistant',
-          content: "Got it! When you're ready, switch to the Form tab to fill in the details and create the feature.",
+          content: "I'm having trouble connecting. You can use the Form tab to create the feature manually.",
         }])
+        return
       }
-    } catch {
+
+      // Stream SSE response
+      setIsStreaming(true)
+      setStreamingContent("")
+      const reader = res.body.getReader()
+      const { parseSSEStream } = await import("@/lib/sse-utils")
+
+      await parseSSEStream(
+        reader,
+        (fullContent) => setStreamingContent(fullContent),
+        (fullContent) => {
+          setIsStreaming(false)
+          setStreamingContent("")
+          if (fullContent) {
+            setChatMessages(prev => [...prev, { role: 'assistant', content: fullContent }])
+          }
+        }
+      )
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
       setChatMessages(prev => [...prev, {
         role: 'assistant',
-        content: "I'm having trouble connecting. Switch to the Form tab to create the feature manually.",
+        content: "Sorry, I encountered an error. Please try again.",
       }])
+      setIsStreaming(false)
+      setStreamingContent("")
     } finally {
       setChatting(false)
+      abortControllerRef.current = null
     }
+  }
+
+  const handleCreateFromChat = async () => {
+    if (saving) return
+    setSaving(true)
+
+    // Format chat transcript as markdown
+    const transcript = chatMessages
+      .map(m => m.role === 'user' ? `**User:** ${m.content}` : `**IN1:** ${m.content}`)
+      .join('\n\n')
+
+    // Extract title: look for markdown heading or **Title:** in last assistant message
+    const lastAssistant = [...chatMessages].reverse().find(m => m.role === 'assistant')
+    let extractedTitle = ''
+    if (lastAssistant) {
+      const headingMatch = lastAssistant.content.match(/^#\s+(.+)$/m)
+      const titleMatch = lastAssistant.content.match(/\*\*Title:\*\*\s*(.+)/i)
+      extractedTitle = headingMatch?.[1] || titleMatch?.[1] || ''
+    }
+    if (!extractedTitle) {
+      // Fallback: first user message truncated
+      const firstUser = chatMessages.find(m => m.role === 'user')
+      extractedTitle = firstUser ? firstUser.content.slice(0, 80) : 'Untitled Feature'
+    }
+
+    const newFeature = {
+      title: extractedTitle.trim(),
+      description: null,
+      priority: 'medium' as const,
+      status: 'planning' as const,
+      assigned_to: 'HBx_IN1',
+      requested_by: 'Lance',
+      labels: null,
+      feature_spec: transcript,
+    }
+
+    if (supabase) {
+      try {
+        const { data, error } = await supabase.from('features').insert(newFeature).select().single()
+        if (error) throw error
+        onCreated(data)
+        onClose()
+        return
+      } catch {
+        // fall through to demo
+      }
+    }
+
+    // Demo fallback
+    onCreated({
+      ...newFeature,
+      id: crypto.randomUUID(),
+      approved_by: null,
+      acceptance_criteria: null,
+      pr_url: null, pr_number: null, pr_status: null, branch_name: null,
+      vercel_preview_url: null, design_spec: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    })
+    onClose()
+    setSaving(false)
   }
 
   const handleCreate = async () => {
@@ -448,7 +525,7 @@ function CreateFeaturePanel({
         onClose()
         return
       } catch (err) {
-        console.error('Error creating feature:', err)
+        void err
       }
     }
 
@@ -493,10 +570,10 @@ function CreateFeaturePanel({
       {mode === 'chat' ? (
         <>
           {/* Chat messages */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto p-3 space-y-3" role="log" aria-live="polite">
             {chatMessages.map((msg, i) => (
               <div key={i} className={cn("flex gap-2", msg.role === 'user' ? "flex-row-reverse" : "flex-row")}>
-                <span className="text-sm flex-shrink-0 mt-0.5">{msg.role === 'user' ? '👤' : '📐'}</span>
+                <span className="text-sm flex-shrink-0 mt-0.5">{msg.role === 'user' ? '👤' : '🏗️'}</span>
                 <div className={cn(
                   "max-w-[85%] rounded-lg px-2.5 py-1.5 text-[11px] text-white/70 whitespace-pre-wrap",
                   msg.role === 'user' ? "bg-blue-600/20 border border-blue-500/20" : "bg-white/[0.04] border border-white/10"
@@ -505,9 +582,18 @@ function CreateFeaturePanel({
                 </div>
               </div>
             ))}
-            {chatting && (
+            {isStreaming && streamingContent && (
               <div className="flex gap-2">
-                <span className="text-sm">📐</span>
+                <span className="text-sm flex-shrink-0 mt-0.5">🏗️</span>
+                <div className="max-w-[85%] rounded-lg px-2.5 py-1.5 text-[11px] text-white/70 whitespace-pre-wrap bg-white/[0.04] border border-white/10">
+                  {streamingContent}
+                  <span className="inline-block w-1.5 h-3 bg-purple-400/60 animate-pulse ml-0.5" />
+                </div>
+              </div>
+            )}
+            {chatting && !isStreaming && (
+              <div className="flex gap-2">
+                <span className="text-sm">🏗️</span>
                 <div className="rounded-lg px-2.5 py-1.5 bg-white/[0.04] border border-white/10">
                   <div className="flex gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -519,6 +605,19 @@ function CreateFeaturePanel({
             )}
             <div ref={chatEndRef} />
           </div>
+          {/* Create from chat button */}
+          {assistantMessageCount >= 2 && (
+            <div className="flex-shrink-0 px-3 py-2 border-t border-white/5">
+              <Button
+                onClick={handleCreateFromChat}
+                className="w-full h-8 text-xs bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500"
+                disabled={saving || chatting || isStreaming}
+              >
+                {saving ? <Loader2 className="h-3 w-3 animate-spin mr-1.5" /> : <Zap className="h-3 w-3 mr-1.5" />}
+                Create Feature from Chat
+              </Button>
+            </div>
+          )}
           {/* Chat input */}
           <div className="flex-shrink-0 p-3 border-t border-white/10">
             <div className="flex gap-2">
@@ -527,15 +626,15 @@ function CreateFeaturePanel({
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChatSend()}
-                disabled={chatting}
+                disabled={chatting || isStreaming}
                 className="flex-1 h-8 text-xs bg-white/5 border-white/10"
                 autoFocus
               />
-              <Button size="sm" onClick={handleChatSend} disabled={!chatInput.trim() || chatting} className="h-8 w-8 p-0">
-                {chatting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              <Button size="sm" onClick={handleChatSend} disabled={!chatInput.trim() || chatting || isStreaming} className="h-8 w-8 p-0">
+                {chatting || isStreaming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
               </Button>
             </div>
-            <p className="text-[9px] text-white/20 mt-1">Chat to plan, then switch to Form to create</p>
+            <p className="text-[9px] text-white/20 mt-1">Plan with IN1, then create directly • Or use Form tab for quick entry</p>
           </div>
         </>
       ) : (
