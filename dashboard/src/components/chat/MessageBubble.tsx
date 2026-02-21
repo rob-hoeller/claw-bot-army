@@ -106,6 +106,42 @@ function AttachmentPreview({
   )
 }
 
+/**
+ * Convert plain text to React nodes with clickable links.
+ * Handles http/https URLs and wraps them in <a> tags.
+ */
+function autoLinkText(text: string): (string | React.ReactElement)[] {
+  const urlRegex = /(https?:\/\/[^\s<>"')\]]+)/g
+  const parts: (string | React.ReactElement)[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index))
+    }
+    const url = match[1]
+    parts.push(
+      <a
+        key={`link-${match.index}`}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-purple-400 hover:text-purple-300 underline underline-offset-2 break-all"
+      >
+        {url}
+      </a>
+    )
+    lastIndex = urlRegex.lastIndex
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex))
+  }
+
+  return parts.length > 0 ? parts : [text]
+}
+
 export function MessageBubble({ message, agentName = "Agent", agentEmoji, isStreaming = false }: MessageBubbleProps) {
   const [lightboxImage, setLightboxImage] = useState<{ url: string; name: string } | null>(null)
   
@@ -175,7 +211,7 @@ export function MessageBubble({ message, agentName = "Agent", agentEmoji, isStre
             {/* Text Content */}
             {message.content && (
               <p className="text-sm whitespace-pre-wrap leading-relaxed">
-                {message.content}
+                {autoLinkText(message.content)}
                 {isStreaming && (
                   <span className="inline-block w-2 h-4 ml-0.5 bg-white/70 animate-pulse" />
                 )}
