@@ -44,6 +44,7 @@ interface Agent {
   emoji?: string
   description?: string
   capabilities?: string[]
+  last_active?: string | null
   children?: Agent[]
 }
 
@@ -66,6 +67,21 @@ const DB_FILE_MAP: Record<string, string> = Object.fromEntries(
 // Standard file tabs for all agents
 const AGENT_FILE_TABS = ["SOUL", "AGENTS", "IDENTITY", "TOOLS", "HEARTBEAT", "USER", "MEMORY"]
 
+function formatLastActive(iso?: string | null): string {
+  if (!iso) return "No activity"
+
+  const now = Date.now()
+  const then = new Date(iso).getTime()
+  const diffSec = Math.floor((now - then) / 1000)
+
+  if (diffSec < 0) return "Just now"
+  if (diffSec < 60) return "Just now"
+  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`
+  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`
+  if (diffSec < 604800) return `${Math.floor(diffSec / 86400)}d ago`
+  return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
 const departments = ["Platform", "Sales", "Innovation", "Support", "Warranty", "Construction", "Start Up", "Settlement", "Design", "QA"]
 
 // Agent Card Component
@@ -81,11 +97,11 @@ function AgentCard({
   isRoot?: boolean
 }) {
   const gatewayStatus = useAgentStatus(agent.id.toLowerCase())
-  
+
   // Get agent emoji
   const getAgentEmoji = (agent: Agent) => {
     if (agent.emoji) return agent.emoji
-    
+
     const emojiMap: Record<string, string> = {
       'HBx': '🧠',
       'HBx_SL1': '🏠',
@@ -116,7 +132,7 @@ function AgentCard({
       <div className="absolute top-2 right-2">
         <AgentStatusBadge status={gatewayStatus} size="sm" />
       </div>
-      
+
       <div
         className={cn(
           "flex items-center justify-center rounded-xl mb-3",
@@ -132,6 +148,12 @@ function AgentCard({
       <p className="text-xs text-white/50 mt-0.5 text-center line-clamp-2">{agent.role}</p>
       <div className="flex items-center gap-2 mt-2">
         <DeploymentStatusBadge status={agent.status} size="sm" />
+      </div>
+      <div className="flex items-center gap-1 mt-1.5">
+        <Clock className="h-3 w-3 text-white/30" />
+        <span className="text-[10px] text-white/30">
+          {formatLastActive(agent.last_active)}
+        </span>
       </div>
     </motion.button>
   )
@@ -435,7 +457,7 @@ const chatUsers = [
 function mapUserToChannelId(userEmail?: string, userMetadata?: Record<string, unknown>): string {
   // Debug: log inputs
   console.log('[AgentsPage] mapUserToChannelId called with:', { userEmail, userMetadata })
-  
+
   // 1. Check user_metadata.channel_id (override if set)
   if (userMetadata?.channel_id && typeof userMetadata.channel_id === 'string') {
     const channelId = userMetadata.channel_id.toLowerCase()
@@ -444,7 +466,7 @@ function mapUserToChannelId(userEmail?: string, userMetadata?: Record<string, un
       return channelId
     }
   }
-  
+
   // 2. Match by exact email (primary method)
   if (userEmail) {
     const emailLower = userEmail.toLowerCase()
@@ -456,7 +478,7 @@ function mapUserToChannelId(userEmail?: string, userMetadata?: Record<string, un
       return match.id
     }
   }
-  
+
   // 3. Default to first user (Lance)
   console.warn('[AgentsPage] Could not map user to channel, defaulting to lance:', { userEmail })
   return chatUsers[0].id
@@ -476,12 +498,12 @@ function AgentDetailPanel({
   const [activeUser, setActiveUser] = useState(defaultUserId || chatUsers[0].id)
   const [activeFile, setActiveFile] = useState("SOUL")
   const [isExpanded, setIsExpanded] = useState(false)
-  
+
   // Agent files state
   const [agentFiles, setAgentFiles] = useState<Record<string, string>>({})
   const [isLoadingFiles, setIsLoadingFiles] = useState(false)
   const [filesError, setFilesError] = useState<string | null>(null)
-  
+
   // Daily memory logs
   const { logs: memoryLogs, loading: memoryLogsLoading } = useMemoryLogs(agent.id)
 
@@ -490,7 +512,7 @@ function AgentDetailPanel({
   const [editContent, setEditContent] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null)
-  
+
   // Read-only mode when viewing someone else's chat (admin view)
   const isReadOnly = activeUser !== defaultUserId
 
@@ -525,7 +547,7 @@ function AgentDetailPanel({
       } catch (err) {
         console.error('Error fetching agent files:', err)
         setFilesError(err instanceof Error ? err.message : 'Failed to load files')
-        
+
         // Fallback to empty content
         const fallbackFiles: Record<string, string> = {}
         AGENT_FILE_TABS.forEach(tab => {
@@ -576,17 +598,17 @@ function AgentDetailPanel({
         ...prev,
         [activeFile]: editContent
       }))
-      
+
       setIsEditing(false)
       setSaveMessage({ type: 'success', text: 'Saved successfully' })
-      
+
       // Clear success message after 3 seconds
       setTimeout(() => setSaveMessage(null), 3000)
     } catch (err) {
       console.error('Error saving file:', err)
-      setSaveMessage({ 
-        type: 'error', 
-        text: err instanceof Error ? err.message : 'Failed to save' 
+      setSaveMessage({
+        type: 'error',
+        text: err instanceof Error ? err.message : 'Failed to save'
       })
     } finally {
       setIsSaving(false)
@@ -596,7 +618,7 @@ function AgentDetailPanel({
   // Get agent emoji based on ID
   const getAgentEmoji = (agent: Agent) => {
     if (agent.emoji) return agent.emoji
-    
+
     const emojiMap: Record<string, string> = {
       'HBx': '🧠',
       'HBx_SL1': '🏠',
@@ -628,8 +650,8 @@ function AgentDetailPanel({
       className={cn(
         "fixed top-0 right-0 h-full bg-black/98 border-l border-white/10 backdrop-blur-xl z-50 flex flex-col overflow-hidden transition-all duration-300",
         "w-full",
-        isExpanded 
-          ? "md:w-full md:border-l-0 md:rounded-none" 
+        isExpanded
+          ? "md:w-full md:border-l-0 md:rounded-none"
           : "md:w-[600px] lg:w-[700px] md:rounded-l-2xl"
       )}
     >
@@ -653,9 +675,9 @@ function AgentDetailPanel({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            variant="ghost" 
-            size="icon" 
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setIsExpanded(!isExpanded)}
             className="hidden md:flex"
             title={isExpanded ? "Collapse panel" : "Expand panel"}
@@ -726,10 +748,10 @@ function AgentDetailPanel({
                 ))}
               </div>
             </div>
-            
+
             {/* Chat Panel */}
             <div className="flex-1 min-h-0">
-              <ChatPanel 
+              <ChatPanel
                 agentId={agent.id}
                 agentName={agent.name}
                 agentEmoji={getAgentEmoji(agent)}
@@ -786,9 +808,9 @@ function AgentDetailPanel({
                 )}
               </div>
               {isEditing ? (
-                <Button 
-                  size="sm" 
-                  onClick={handleSave} 
+                <Button
+                  size="sm"
+                  onClick={handleSave}
                   className="h-7 text-xs"
                   disabled={isSaving}
                 >
@@ -1004,7 +1026,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
       try {
         const { data, error } = await supabase
           .from('agents')
-          .select('id, name, role, description, emoji, status, department_id, capabilities')
+          .select('id, name, role, description, emoji, status, department_id, capabilities, last_active')
           .order('id')
 
         if (error) throw error
@@ -1023,6 +1045,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
               status: (hbx.status as Agent['status']) || "active",
               emoji: hbx.emoji || "🧠",
               description: hbx.description || undefined,
+              last_active: (hbx.last_active as string) || null,
               children: children.map(child => ({
                 id: child.id,
                 name: child.name,
@@ -1032,6 +1055,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
                 emoji: child.emoji || "🤖",
                 description: child.description || undefined,
                 capabilities: (child.capabilities as string[]) || undefined,
+                last_active: (child.last_active as string) || null,
               }))
             }
             setAgentTree(tree)
@@ -1059,14 +1083,14 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
       }
       return null
     }
-    
+
     const agent = findAgent(agentTree, item.agentId)
     if (agent) {
       setSelectedAgent(agent)
     }
   }
 
-  // Global knowledge files — live from Supabase
+  // Global knowledge files - live from Supabase
   const [globalKnowledgeFiles, setGlobalKnowledgeFiles] = useState<AgentFile[]>([])
 
   useEffect(() => {
@@ -1158,7 +1182,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
             <div className="flex flex-wrap justify-center gap-4 mt-2">
               {/* Horizontal connector */}
               <div className="absolute w-[calc(100%-200px)] max-w-xl h-px bg-white/10 -mt-6 left-1/2 -translate-x-1/2" />
-              
+
               {childAgents.map((child) => (
                 <div key={child.id} className="flex flex-col items-center">
                   <div className="w-px h-4 bg-white/10 -mt-2 mb-2" />
@@ -1169,7 +1193,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
                   />
                 </div>
               ))}
-              
+
               {/* Add Agent Card */}
               <div className="flex flex-col items-center">
                 <div className="w-px h-4 bg-white/10 -mt-2 mb-2 opacity-0" />
@@ -1205,7 +1229,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
             />
           </>
         )}
-        
+
         {showNewAgent && (
           <>
             <motion.div
@@ -1245,7 +1269,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
       {/* Activity Feed Side Panel */}
       {showActivityFeed && (
         <div className="w-80 flex-shrink-0 relative">
-          <ActivityFeed 
+          <ActivityFeed
             onItemClick={handleActivityClick}
             className="h-full"
           />
@@ -1257,7 +1281,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
         onClick={() => setShowActivityFeed(!showActivityFeed)}
         className={cn(
           "fixed bottom-4 right-4 z-30 p-3 rounded-full transition-all shadow-lg",
-          showActivityFeed 
+          showActivityFeed
             ? "bg-purple-500/20 text-purple-300 hover:bg-purple-500/30"
             : "bg-white/10 text-white/60 hover:bg-white/20"
         )}

@@ -20,6 +20,7 @@ export interface Agent {
   status: "active" | "deploying" | "standby"
   capabilities: string[]
   files: AgentFile[]
+  last_active?: string | null
 }
 
 // Maps file display names to DB column names
@@ -107,7 +108,8 @@ export function useAgents() {
           tools_md,
           heartbeat_md,
           user_md,
-          memory_md
+          memory_md,
+          last_active
         `)
         .order("id")
 
@@ -126,6 +128,7 @@ export function useAgents() {
           department_id: row.department_id as string,
           dept: (row.departments as { name: string } | null)?.name || "Unknown",
           files,
+          last_active: (row.last_active as string) || null,
         }
       })
 
