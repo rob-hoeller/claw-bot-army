@@ -437,19 +437,22 @@ export function ChatPanel({
         }
       }
 
-      // Try to send to gateway
+      // Try to send to gateway / direct LLM
+      // Sub-agents (non-HBx) use direct Anthropic API via /api/chat/send,
+      // so they should always attempt the call regardless of gateway status.
       let responseContent: string
+      const isSubAgent = agentId !== 'HBx' && agentId !== 'hbx'
+      const shouldAttemptSend = gatewayConnected || isSubAgent
 
-      if (gatewayConnected) {
+      if (shouldAttemptSend) {
         try {
           responseContent = await sendToGateway(content, attachments)
         } catch (err) {
-          console.error('Gateway error, falling back to mock:', err)
-          // Fallback to mock if gateway fails
-          responseContent = `I received your message: "${content}"\n\n_(Gateway connection failed — this is a simulated response)_`
+          console.error('Send error, falling back to mock:', err)
+          responseContent = `I received your message: "${content}"\n\n_(${isSubAgent ? 'Direct LLM' : 'Gateway'} connection failed — this is a simulated response)_`
         }
       } else {
-        // Mock response when gateway not connected
+        // Mock response when gateway not connected (HBx only)
         await new Promise(resolve => setTimeout(resolve, 1000))
         responseContent = `I received your message: "${content}"\n\n_(Gateway not connected — configure OPENCLAW_GATEWAY_URL and OPENCLAW_GATEWAY_TOKEN for real responses)_`
       }
