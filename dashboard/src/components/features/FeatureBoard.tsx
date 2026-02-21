@@ -57,6 +57,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { ErrorBanner } from "@/components/shared/ErrorBanner"
 import { supabase } from "@/lib/supabase"
 
 // ─── Types ───────────────────────────────────────────────────────
@@ -230,9 +231,11 @@ function PipelineProgress({ status }: { status: FeatureStatus }) {
 function StatusDropdown({
   currentStatus,
   onStatusChange,
+  disabled = false,
 }: {
   currentStatus: FeatureStatus
   onStatusChange: (status: FeatureStatus) => void
+  disabled?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const current = statusConfig[currentStatus]
@@ -241,11 +244,17 @@ function StatusDropdown({
   return (
     <div className="relative">
       <button
-        onClick={(e) => { e.stopPropagation(); setOpen(!open) }}
+        onClick={(e) => {
+          e.stopPropagation()
+          if (disabled) return
+          setOpen(!open)
+        }}
         className={cn(
           "flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] transition-all hover:ring-1 hover:ring-white/20",
-          current.color
+          current.color,
+          disabled && "opacity-60 cursor-not-allowed hover:ring-0"
         )}
+        disabled={disabled}
       >
         {current.label}
         <ChevronDown className="h-2.5 w-2.5" />
@@ -291,9 +300,17 @@ function StatusDropdown({
 
 // ─── Sortable Feature Card ──────────────────────────────────────
 function SortableFeatureCard({
-  feature, agents, onClick, onStatusChange,
+  feature,
+  agents,
+  onClick,
+  onStatusChange,
+  isUpdating,
 }: {
-  feature: Feature; agents: Agent[]; onClick: () => void; onStatusChange: (status: FeatureStatus) => void
+  feature: Feature
+  agents: Agent[]
+  onClick: () => void
+  onStatusChange: (status: FeatureStatus) => void
+  isUpdating: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: feature.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
@@ -302,11 +319,19 @@ function SortableFeatureCard({
   const requestedAgent = agents.find(a => a.id === feature.requested_by)
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes}>
+    <div ref={setNodeRef} style={style} {...attributes} className="relative">
       <div
         onClick={onClick}
-        className="p-2 rounded-md bg-white/[0.02] border border-white/5 hover:border-white/20 hover:bg-white/[0.04] transition-all cursor-pointer group"
+        className={cn(
+          "p-2 rounded-md bg-white/[0.02] border border-white/5 hover:border-white/20 hover:bg-white/[0.04] transition-all cursor-pointer group",
+          isUpdating && "opacity-70"
+        )}
       >
+        {isUpdating && (
+          <div className="absolute top-1 right-1 flex items-center gap-1 text-[9px] text-white/60">
+            <Loader2 className="h-3 w-3 animate-spin text-purple-300" />
+          </div>
+        )}
         <div className="flex items-start gap-1.5 mb-1">
           <button {...listeners} className="mt-0.5 opacity-0 group-hover:opacity-40 hover:!opacity-80 cursor-grab active:cursor-grabbing" onClick={(e) => e.stopPropagation()}>
             <GripVertical className="h-3 w-3 text-white/50" />
@@ -333,7 +358,7 @@ function SortableFeatureCard({
           <div className="flex items-center gap-1.5">
             {feature.vercel_preview_url && <span title="Vercel Preview"><Globe className="h-3 w-3 text-cyan-400" /></span>}
             {feature.pr_url && <GitPullRequest className={cn("h-3 w-3", feature.pr_status === 'merged' ? 'text-green-400' : 'text-purple-400')} />}
-            <StatusDropdown currentStatus={feature.status} onStatusChange={onStatusChange} />
+            <StatusDropdown currentStatus={feature.status} onStatusChange={onStatusChange} disabled={isUpdating} />
           </div>
         </div>
       </div>
@@ -359,10 +384,12 @@ function CreateFeaturePanel({
   agents,
   onClose,
   onCreated,
+  isDemoMode,
 }: {
   agents: Agent[]
   onClose: () => void
   onCreated: (feature: Feature) => void
+  isDemoMode: boolean
 }) {
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -370,6 +397,7 @@ function CreateFeaturePanel({
   const [assignedTo, setAssignedTo] = useState("")
   const [labels, setLabels] = useState("")
   const [saving, setSaving] = useState(false)
+  const [notice, setNotice] = useState<{ type: 'error' | 'info'; message: string } | null>(null)
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([
     { role: 'assistant', content: "👋 I'm **IN1** — your Product Architect. Let's plan this feature together.\n\nWhat problem are you looking to solve?" },
   ])
@@ -446,6 +474,7 @@ function CreateFeaturePanel({
   const handleCreateFromChat = async () => {
     if (saving) return
     setSaving(true)
+    setNotice(null)
 
     // Format chat transcript as markdown
     const transcript = chatMessages
@@ -477,35 +506,49 @@ function CreateFeaturePanel({
       feature_spec: transcript,
     }
 
-    if (supabase) {
-      try {
-        const { data, error } = await supabase.from('features').insert(newFeature).select().single()
-        if (error) throw error
-        onCreated(data)
-        onClose()
-        return
-      } catch {
-        // fall through to demo
-      }
+    if (isDemoMode) {
+      onCreated({
+        ...newFeature,
+        id: crypto.randomUUID(),
+        approved_by: null,
+        acceptance_criteria: null,
+        pr_url: null,
+        pr_number: null,
+        pr_status: null,
+        branch_name: null,
+        vercel_preview_url: null,
+        design_spec: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      onClose()
+      setSaving(false)
+      return
     }
 
-    // Demo fallback
-    onCreated({
-      ...newFeature,
-      id: crypto.randomUUID(),
-      approved_by: null,
-      acceptance_criteria: null,
-      pr_url: null, pr_number: null, pr_status: null, branch_name: null,
-      vercel_preview_url: null, design_spec: null,
-      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    })
-    onClose()
-    setSaving(false)
+    try {
+      const res = await fetch('/api/features', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newFeature),
+      })
+      const payload = await res.json()
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to create')
+      }
+      onCreated(payload.feature)
+      onClose()
+    } catch {
+      setNotice({ type: 'error', message: "Couldn't create feature. Check connection and try again." })
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleCreate = async () => {
     if (!title.trim()) return
     setSaving(true)
+    setNotice(null)
 
     const newFeature = {
       title: title.trim(),
@@ -517,30 +560,44 @@ function CreateFeaturePanel({
       labels: labels.trim() ? labels.split(',').map(l => l.trim()) : null,
     }
 
-    if (supabase) {
-      try {
-        const { data, error } = await supabase.from('features').insert(newFeature).select().single()
-        if (error) throw error
-        onCreated(data)
-        onClose()
-        return
-      } catch (err) {
-        void err
-      }
+    if (isDemoMode) {
+      onCreated({
+        ...newFeature,
+        id: crypto.randomUUID(),
+        approved_by: null,
+        acceptance_criteria: null,
+        pr_url: null,
+        pr_number: null,
+        pr_status: null,
+        branch_name: null,
+        vercel_preview_url: null,
+        feature_spec: null,
+        design_spec: null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      onClose()
+      setSaving(false)
+      return
     }
 
-    // Demo fallback
-    onCreated({
-      ...newFeature,
-      id: crypto.randomUUID(),
-      approved_by: null,
-      acceptance_criteria: null,
-      pr_url: null, pr_number: null, pr_status: null, branch_name: null,
-      vercel_preview_url: null, feature_spec: null, design_spec: null,
-      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    })
-    onClose()
-    setSaving(false)
+    try {
+      const res = await fetch('/api/features', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newFeature),
+      })
+      const payload = await res.json()
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to create')
+      }
+      onCreated(payload.feature)
+      onClose()
+    } catch {
+      setNotice({ type: 'error', message: "Couldn't create feature. Check connection and try again." })
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -566,6 +623,19 @@ function CreateFeaturePanel({
           </button>
         </div>
       </div>
+
+      {notice && (
+        <div
+          className={cn(
+            "mx-3 mt-2 rounded border px-2 py-1 text-[10px]",
+            notice.type === 'error'
+              ? "border-red-500/30 bg-red-500/10 text-red-200"
+              : "border-yellow-500/30 bg-yellow-500/10 text-yellow-200"
+          )}
+        >
+          {notice.message}
+        </div>
+      )}
 
       {mode === 'chat' ? (
         <>
@@ -677,7 +747,14 @@ function CreateFeaturePanel({
           <div className="flex-shrink-0 p-3 border-t border-white/10 flex gap-2">
             <Button variant="ghost" onClick={onClose} className="h-8 text-xs flex-1">Cancel</Button>
             <Button onClick={handleCreate} disabled={!title.trim() || saving} className="h-8 text-xs flex-1 bg-purple-600 hover:bg-purple-500">
-              {saving ? "Creating..." : "Create Feature"}
+              {saving ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                  Creating...
+                </>
+              ) : (
+                "Create Feature"
+              )}
             </Button>
           </div>
         </>
@@ -726,11 +803,13 @@ function ApproveButton({
   targetStatus,
   label,
   onApprove,
+  onError,
 }: {
   feature: Feature
   targetStatus: FeatureStatus
   label: string
   onApprove: (status: FeatureStatus) => void
+  onError: (message: string) => void
 }) {
   const [loading, setLoading] = useState(false)
   const allowed = validTransitions[feature.status]?.includes(targetStatus)
@@ -748,11 +827,13 @@ function ApproveButton({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ target_status: targetStatus, approved_by: 'Lance' }),
           })
-          if (res.ok) {
-            onApprove(targetStatus)
+          if (!res.ok) {
+            onError("Update failed. Try again.")
+            return
           }
-        } catch (err) {
-          console.error('Approve failed:', err)
+          onApprove(targetStatus)
+        } catch {
+          onError("Update failed. Try again.")
         } finally {
           setLoading(false)
         }
@@ -773,12 +854,14 @@ function FeatureDetailPanel({
   onClose,
   onStatusChange,
   onReassign,
+  onError,
 }: {
   feature: Feature
   agents: Agent[]
   onClose: () => void
   onStatusChange: (status: FeatureStatus) => void
   onReassign: (agentId: string | null) => void
+  onError: (message: string) => void
 }) {
   const [messages, setMessages] = useState<BridgeMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
@@ -940,13 +1023,13 @@ function FeatureDetailPanel({
         {(feature.status === 'design_review' || feature.status === 'qa_review' || feature.status === 'review') && (
           <div className="flex gap-1.5 mt-2">
             {feature.status === 'design_review' && (
-              <ApproveButton feature={feature} targetStatus="in_progress" label="Approve Design → Build" onApprove={onStatusChange} />
+              <ApproveButton feature={feature} targetStatus="in_progress" label="Approve Design → Build" onApprove={onStatusChange} onError={onError} />
             )}
             {feature.status === 'qa_review' && (
-              <ApproveButton feature={feature} targetStatus="review" label="QA Pass → Review" onApprove={onStatusChange} />
+              <ApproveButton feature={feature} targetStatus="review" label="QA Pass → Review" onApprove={onStatusChange} onError={onError} />
             )}
             {feature.status === 'review' && (
-              <ApproveButton feature={feature} targetStatus="approved" label="Approve → Ready" onApprove={onStatusChange} />
+              <ApproveButton feature={feature} targetStatus="approved" label="Approve → Ready" onApprove={onStatusChange} onError={onError} />
             )}
           </div>
         )}
@@ -1140,12 +1223,14 @@ function DroppableColumn({
   agents,
   onFeatureClick,
   onStatusChange,
+  updatingIds,
 }: {
   column: typeof columns[0]
   features: Feature[]
   agents: Agent[]
   onFeatureClick: (feature: Feature) => void
   onStatusChange: (featureId: string, status: FeatureStatus) => void
+  updatingIds: Record<string, boolean>
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const Icon = column.icon
@@ -1168,7 +1253,14 @@ function DroppableColumn({
       <div ref={setNodeRef} className={cn("space-y-1.5 min-h-[100px] rounded-md p-1 transition-all", isOver && "bg-purple-400/5 ring-1 ring-purple-400/20")}>
         <SortableContext items={columnFeatures.map(f => f.id)} strategy={verticalListSortingStrategy}>
           {columnFeatures.map((feature) => (
-            <SortableFeatureCard key={feature.id} feature={feature} agents={agents} onClick={() => onFeatureClick(feature)} onStatusChange={(status) => onStatusChange(feature.id, status)} />
+            <SortableFeatureCard
+              key={feature.id}
+              feature={feature}
+              agents={agents}
+              onClick={() => onFeatureClick(feature)}
+              onStatusChange={(status) => onStatusChange(feature.id, status)}
+              isUpdating={Boolean(updatingIds[feature.id])}
+            />
           ))}
         </SortableContext>
         {hiddenCount > 0 && (
@@ -1197,6 +1289,8 @@ export function FeatureBoard() {
   const [selectedFeature, setSelectedFeature] = useState<Feature | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [boardNotice, setBoardNotice] = useState<{ type: 'error' | 'info'; message: string } | null>(null)
+  const [updatingIds, setUpdatingIds] = useState<Record<string, boolean>>({})
   const isDemoMode = !supabase
 
   const sensors = useSensors(
@@ -1247,11 +1341,21 @@ export function FeatureBoard() {
     if (feature) {
       const allowed = validTransitions[feature.status]
       if (allowed && !allowed.includes(newStatus)) {
-        console.warn(`Invalid transition: ${feature.status} → ${newStatus}`)
         return
       }
     }
 
+    if (updatingIds[featureId]) return
+
+    if (isDemoMode) {
+      setFeatures(prev => prev.map(f => f.id === featureId ? { ...f, status: newStatus, updated_at: new Date().toISOString() } : f))
+      setSelectedFeature(prev => prev && prev.id === featureId ? { ...prev, status: newStatus } : prev)
+      setBoardNotice({ type: 'info', message: "Demo mode — changes are local only." })
+      return
+    }
+
+    const previous = feature ? { ...feature } : undefined
+    setUpdatingIds(prev => ({ ...prev, [featureId]: true }))
     setFeatures(prev => prev.map(f => f.id === featureId ? { ...f, status: newStatus, updated_at: new Date().toISOString() } : f))
     setSelectedFeature(prev => prev && prev.id === featureId ? { ...prev, status: newStatus } : prev)
 
@@ -1261,14 +1365,34 @@ export function FeatureBoard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
       })
-      if (!res.ok) throw new Error(`Status update failed: ${res.status}`)
-    } catch (err) {
-      console.error('Error updating status:', err)
-      loadData()
+      if (!res.ok) throw new Error("Status update failed")
+    } catch {
+      if (previous) {
+        setFeatures(prev => prev.map(f => f.id === featureId ? previous : f))
+        setSelectedFeature(prev => prev && prev.id === featureId ? { ...prev, status: previous.status } : prev)
+      }
+      setBoardNotice({ type: 'error', message: "Status update failed. Reverted." })
+    } finally {
+      setUpdatingIds(prev => {
+        const { [featureId]: _removed, ...rest } = prev
+        return rest
+      })
     }
-  }, [features, loadData])
+  }, [features, isDemoMode, updatingIds])
 
   const handleReassign = useCallback(async (featureId: string, newAgentId: string | null) => {
+    const feature = features.find(f => f.id === featureId)
+    if (updatingIds[featureId]) return
+
+    if (isDemoMode) {
+      setFeatures(prev => prev.map(f => f.id === featureId ? { ...f, assigned_to: newAgentId, updated_at: new Date().toISOString() } : f))
+      setSelectedFeature(prev => prev && prev.id === featureId ? { ...prev, assigned_to: newAgentId } : prev)
+      setBoardNotice({ type: 'info', message: "Demo mode — changes are local only." })
+      return
+    }
+
+    const previousAssigned = feature?.assigned_to ?? null
+    setUpdatingIds(prev => ({ ...prev, [featureId]: true }))
     setFeatures(prev => prev.map(f => f.id === featureId ? { ...f, assigned_to: newAgentId, updated_at: new Date().toISOString() } : f))
     setSelectedFeature(prev => prev && prev.id === featureId ? { ...prev, assigned_to: newAgentId } : prev)
     try {
@@ -1277,9 +1401,18 @@ export function FeatureBoard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ assigned_to: newAgentId }),
       })
-      if (!res.ok) throw new Error(`Reassign failed: ${res.status}`)
-    } catch (err) { console.error('Error reassigning:', err); loadData() }
-  }, [loadData])
+      if (!res.ok) throw new Error("Reassign failed")
+    } catch {
+      setFeatures(prev => prev.map(f => f.id === featureId ? { ...f, assigned_to: previousAssigned } : f))
+      setSelectedFeature(prev => prev && prev.id === featureId ? { ...prev, assigned_to: previousAssigned } : prev)
+      setBoardNotice({ type: 'error', message: "Update failed. Try again." })
+    } finally {
+      setUpdatingIds(prev => {
+        const { [featureId]: _removed, ...rest } = prev
+        return rest
+      })
+    }
+  }, [features, isDemoMode, updatingIds])
 
   const handleDragStart = (event: DragStartEvent) => { setActiveId(event.active.id as string) }
 
@@ -1341,7 +1474,26 @@ export function FeatureBoard() {
         <div className="px-2 py-1.5 rounded bg-yellow-500/10 border border-yellow-500/20">
           <div className="flex items-center gap-1.5">
             <AlertCircle className="h-3 w-3 text-yellow-400" />
-            <p className="text-[10px] text-yellow-400/80">Demo mode — Connect Supabase for live data</p>
+            <div className="text-[10px] text-yellow-400/80">
+              <p>Demo mode — Connect Supabase for live data</p>
+              <p className="text-yellow-400/60">Changes won’t persist after refresh.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {boardNotice?.type === 'error' && (
+        <ErrorBanner
+          message={boardNotice.message}
+          onDismiss={() => setBoardNotice(null)}
+          className="py-2"
+        />
+      )}
+      {boardNotice?.type === 'info' && (
+        <div className="px-2 py-1.5 rounded bg-yellow-500/10 border border-yellow-500/20">
+          <div className="flex items-center gap-1.5">
+            <AlertCircle className="h-3 w-3 text-yellow-400" />
+            <p className="text-[10px] text-yellow-400/80">{boardNotice.message}</p>
           </div>
         </div>
       )}
@@ -1367,7 +1519,15 @@ export function FeatureBoard() {
       <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="flex gap-1.5 overflow-x-auto pb-2">
           {columns.map((column) => (
-            <DroppableColumn key={column.id} column={column} features={filteredFeatures} agents={agents} onFeatureClick={setSelectedFeature} onStatusChange={handleStatusChange} />
+            <DroppableColumn
+              key={column.id}
+              column={column}
+              features={filteredFeatures}
+              agents={agents}
+              onFeatureClick={setSelectedFeature}
+              onStatusChange={handleStatusChange}
+              updatingIds={updatingIds}
+            />
           ))}
         </div>
         <DragOverlay>
@@ -1380,9 +1540,14 @@ export function FeatureBoard() {
         {selectedFeature && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-40" onClick={() => setSelectedFeature(null)} />
-            <FeatureDetailPanel feature={selectedFeature} agents={agents} onClose={() => setSelectedFeature(null)}
+            <FeatureDetailPanel
+              feature={selectedFeature}
+              agents={agents}
+              onClose={() => setSelectedFeature(null)}
               onStatusChange={(status) => handleStatusChange(selectedFeature.id, status)}
-              onReassign={(agentId) => handleReassign(selectedFeature.id, agentId)} />
+              onReassign={(agentId) => handleReassign(selectedFeature.id, agentId)}
+              onError={(message) => setBoardNotice({ type: 'error', message })}
+            />
           </>
         )}
       </AnimatePresence>
@@ -1390,7 +1555,12 @@ export function FeatureBoard() {
         {showCreate && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-40" onClick={() => setShowCreate(false)} />
-            <CreateFeaturePanel agents={agents} onClose={() => setShowCreate(false)} onCreated={(feature) => setFeatures(prev => [feature, ...prev])} />
+            <CreateFeaturePanel
+              agents={agents}
+              onClose={() => setShowCreate(false)}
+              onCreated={(feature) => setFeatures(prev => [feature, ...prev])}
+              isDemoMode={isDemoMode}
+            />
           </>
         )}
       </AnimatePresence>
