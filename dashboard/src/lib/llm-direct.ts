@@ -74,8 +74,8 @@ export async function buildAgentSystemPrompt(agentId: string): Promise<string | 
 export function isDirectLLMAgent(agentId: string): boolean {
   // HBx (main orchestrator) uses the gateway for full tool/memory support
   // All sub-agents use direct LLM to avoid gateway persona override
-  const gatewayAgents = ['HBx', 'hbx', 'main']
-  return !gatewayAgents.includes(agentId)
+  const gatewayAgents = ['hbx', 'main']
+  return !gatewayAgents.includes(agentId.toLowerCase())
 }
 
 // ─── Streaming: call Anthropic Messages API directly ─────────────

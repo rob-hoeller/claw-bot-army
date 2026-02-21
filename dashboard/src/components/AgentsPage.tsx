@@ -743,7 +743,7 @@ function AgentDetailPanel({
             {/* Chat Panel */}
             <div className="flex-1 min-h-0">
               <ChatPanel 
-                agentId={agent.id.toLowerCase()}
+                agentId={agent.id}
                 agentName={agent.name}
                 agentEmoji={getAgentEmoji(agent)}
                 userId={activeUser}
