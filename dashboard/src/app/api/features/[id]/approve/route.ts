@@ -105,8 +105,19 @@ export async function POST(
     const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL
     const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
     if (GATEWAY_URL && GATEWAY_TOKEN && data) {
-      const notifyStatuses = ['design_review', 'in_progress', 'review']
+      const notifyStatuses = ['design_review', 'in_progress', 'review', 'approved']
       if (notifyStatuses.includes(target_status)) {
+        let notificationContent: string
+        if (target_status === 'approved') {
+          notificationContent = [
+            `🚀 Feature "${data.title}" (ID: ${id}) has been APPROVED by ${approved_by || 'Lance'}.`,
+            `Branch: ${data.branch || 'unknown'}`,
+            `**Please submit the PR to main now.**`,
+          ].join('\n')
+        } else {
+          notificationContent = `Feature "${data.title}" (${id}) has been approved and moved to ${target_status.replace(/_/g, ' ')}. It has been auto-assigned to ${autoAssignMap[target_status] || 'the next agent'}. Please route accordingly.`
+        }
+
         fetch(`${GATEWAY_URL}/v1/chat/completions`, {
           method: 'POST',
           headers: {
@@ -117,11 +128,11 @@ export async function POST(
             model: 'openclaw:HBx',
             messages: [{
               role: 'user',
-              content: `Feature "${data.title}" (${id}) has been approved and moved to ${target_status.replace(/_/g, ' ')}. It has been auto-assigned to ${autoAssignMap[target_status] || 'the next agent'}. Please route accordingly.`,
+              content: notificationContent,
             }],
           }),
-        }).catch(() => {
-          // Gateway notification is best-effort
+        }).catch((err) => {
+          console.error('[API] Gateway notification failed for feature:', id, err)
         })
       }
     }
