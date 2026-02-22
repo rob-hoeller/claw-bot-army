@@ -19,6 +19,7 @@ import {
   isDirectLLMAgent,
   streamDirectLLM,
 } from '@/lib/llm-direct'
+import { extractText } from '@/lib/file-processor'
 
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
@@ -96,6 +97,42 @@ function decodeBase64ToText(b64: string, maxChars = 50000): string {
   return text
 }
 
+// ─── Shared PDF extraction helper ────────────────────────────────
+
+type PdfResult =
+  | { kind: 'ok'; name: string; text: string; pageCount: string; warnings: string }
+  | { kind: 'empty'; name: string }
+  | { kind: 'password'; name: string }
+  | { kind: 'error'; name: string; message: string }
+
+async function extractPdfContent(base64Data: string, filename?: string): Promise<PdfResult> {
+  const name = filename || 'document.pdf'
+  try {
+    const pdfBuffer = Buffer.from(base64Data, 'base64')
+    const result = await extractText(pdfBuffer, 'application/pdf')
+    if (result.text.trim()) {
+      const warnings = result.warnings.length > 0 ? `\n[Warnings: ${result.warnings.join('; ')}]` : ''
+      return { kind: 'ok', name, text: result.text, pageCount: String(result.pageCount || '?'), warnings }
+    }
+    return { kind: 'empty', name }
+  } catch (pdfErr) {
+    const errMsg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr)
+    if (errMsg.toLowerCase().includes('encrypt') || errMsg.toLowerCase().includes('password')) {
+      return { kind: 'password', name }
+    }
+    return { kind: 'error', name, message: errMsg }
+  }
+}
+
+function pdfResultToString(r: PdfResult): string {
+  switch (r.kind) {
+    case 'ok': return `--- PDF: ${r.name} (${r.pageCount} pages) ---\n${r.text}${r.warnings}\n--- End of PDF ---`
+    case 'empty': return `[Attached PDF: ${r.name} — no extractable text (may be scanned/image-only)]`
+    case 'password': return `[Attached PDF: ${r.name} — password protected, cannot extract text]`
+    case 'error': return `[Attached PDF: ${r.name} — extraction failed: ${r.message}]`
+  }
+}
+
 function parseDataUrl(url: string): { mediaType: string; base64Data: string } | null {
   const m = url.match(/^data:([^;]+);base64,(.+)$/)
   return m ? { mediaType: m[1], base64Data: m[2] } : null
@@ -145,7 +182,8 @@ async function flattenAttachmentsToText(
         const textContent = decodeBase64ToText(base64Data)
         parts.push(`--- File: ${att.name || 'unknown'} (${mediaType}) ---\n${textContent}\n--- End of file ---`)
       } else if (mediaType === 'application/pdf') {
-        parts.push(`[Attached PDF: ${att.name || 'document.pdf'} — PDF content extraction not yet supported.]`)
+        const pdfResult = await extractPdfContent(base64Data, att.name)
+        parts.push(pdfResultToString(pdfResult))
       } else {
         parts.push(`[Attached file: ${att.name || 'unknown'} (${mediaType}, ${Math.round(base64Data.length * 0.75 / 1024)}KB) — binary file.]`)
       }
@@ -195,10 +233,8 @@ async function buildResponsesBody(
           text: `--- File: ${att.name || 'unknown'} (${mediaType}) ---\n${textContent}\n--- End of file ---`,
         })
       } else if (mediaType === 'application/pdf') {
-        contentParts.push({
-          type: 'input_text',
-          text: `[Attached PDF: ${att.name || 'document.pdf'} — PDF content extraction not yet supported.]`,
-        })
+        const pdfResult = await extractPdfContent(base64Data, att.name)
+        contentParts.push({ type: 'input_text', text: pdfResultToString(pdfResult) })
       } else {
         contentParts.push({
           type: 'input_text',
