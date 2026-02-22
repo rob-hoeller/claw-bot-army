@@ -52,6 +52,7 @@ import {
   Ban,
   FileText,
   Globe,
+  DollarSign,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -90,6 +91,9 @@ interface Feature {
   vercel_preview_url: string | null
   feature_spec: string | null
   design_spec: string | null
+  estimated_cost: number | null
+  actual_cost: number | null
+  cost_notes: string | null
   created_at: string
   updated_at: string
 }
@@ -185,6 +189,7 @@ const demoFeatures: Feature[] = [
     acceptance_criteria: '- HBx can spawn sub-agents\n- Tasks route correctly', labels: ['core', 'infrastructure'],
     pr_url: null, pr_number: null, pr_status: null, branch_name: 'hbx/agent-communication',
     vercel_preview_url: null, feature_spec: null, design_spec: null,
+    estimated_cost: 25, actual_cost: null, cost_notes: null,
     created_at: new Date(Date.now() - 86400000).toISOString(), updated_at: new Date().toISOString(),
   },
   {
@@ -193,6 +198,7 @@ const demoFeatures: Feature[] = [
     acceptance_criteria: null, labels: ['ui', 'innovation'],
     pr_url: null, pr_number: null, pr_status: null, branch_name: null,
     vercel_preview_url: null, feature_spec: null, design_spec: null,
+    estimated_cost: 10, actual_cost: null, cost_notes: null,
     created_at: new Date(Date.now() - 172800000).toISOString(), updated_at: new Date().toISOString(),
   },
 ]
@@ -349,6 +355,22 @@ function SortableFeatureCard({
         <div className="pl-[18px] mb-1">
           <PipelineProgress status={feature.status} />
         </div>
+
+        {/* Cost badges */}
+        {(feature.estimated_cost != null || feature.actual_cost != null) && (
+          <div className="flex items-center gap-1 pl-[18px] mb-1">
+            {feature.estimated_cost != null && (
+              <span className="text-[9px] text-white/40 bg-white/5 px-1 rounded" title="Estimated cost">
+                ~${feature.estimated_cost.toFixed(2)}
+              </span>
+            )}
+            {feature.actual_cost != null && (
+              <span className="text-[9px] text-green-400/70 bg-green-500/10 px-1 rounded" title="Actual cost">
+                ${feature.actual_cost.toFixed(2)}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between pl-[18px]">
           <div className="flex items-center gap-1">
@@ -519,6 +541,9 @@ function CreateFeaturePanel({
         branch_name: null,
         vercel_preview_url: null,
         design_spec: null,
+        estimated_cost: null,
+        actual_cost: null,
+        cost_notes: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -574,6 +599,9 @@ function CreateFeaturePanel({
         vercel_preview_url: null,
         feature_spec: null,
         design_spec: null,
+        estimated_cost: null,
+        actual_cost: null,
+        cost_notes: null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -1126,6 +1154,33 @@ function FeatureDetailPanel({
               <pre className="text-[11px] text-white/70 whitespace-pre-wrap font-mono">{feature.acceptance_criteria}</pre>
             </div>
           )}
+
+          {/* Cost Tracking */}
+          <div className="p-3 border-b border-white/5 space-y-2">
+            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <DollarSign className="h-3 w-3" />Cost Tracking
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[9px] text-white/30">Estimated Cost</label>
+                <div className="text-[11px] text-white/70">
+                  {feature.estimated_cost != null ? `$${feature.estimated_cost.toFixed(2)}` : '—'}
+                </div>
+              </div>
+              <div>
+                <label className="text-[9px] text-white/30">Actual Cost</label>
+                <div className="text-[11px] text-white/70">
+                  {feature.actual_cost != null ? `$${feature.actual_cost.toFixed(2)}` : '—'}
+                </div>
+              </div>
+            </div>
+            {feature.cost_notes && (
+              <div>
+                <label className="text-[9px] text-white/30">Notes</label>
+                <p className="text-[10px] text-white/50 italic">{feature.cost_notes}</p>
+              </div>
+            )}
+          </div>
         </div>
       ) : activeTab === 'specs' ? (
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
@@ -1250,6 +1305,14 @@ function DroppableColumn({
         <Icon className={cn("h-3 w-3", column.color)} />
         <h3 className="text-[10px] font-medium text-white/80 truncate">{column.label}</h3>
         <span className="text-[9px] text-white/30 bg-white/5 px-1 rounded">{allColumnFeatures.length}</span>
+        {(() => {
+          const total = allColumnFeatures.reduce((sum, f) => sum + (f.estimated_cost || 0), 0)
+          return total > 0 ? (
+            <span className="text-[9px] text-green-400/50 bg-green-500/5 px-1 rounded" title="Column estimated cost total">
+              ${total.toFixed(0)}
+            </span>
+          ) : null
+        })()}
       </div>
       <div ref={setNodeRef} className={cn("space-y-1.5 min-h-[100px] rounded-md p-1 transition-all", isOver && "bg-purple-400/5 ring-1 ring-purple-400/20")}>
         <SortableContext items={columnFeatures.map(f => f.id)} strategy={verticalListSortingStrategy}>

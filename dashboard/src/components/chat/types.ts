@@ -78,3 +78,27 @@ export interface Agent {
   emoji: string
   status: 'active' | 'deploying' | 'standby'
 }
+
+// Bridge message shape (work_item_messages table)
+export interface BridgeMessage {
+  id: string
+  work_item_id: string
+  sender_type: 'user' | 'agent' | 'system'
+  sender_id: string
+  sender_name: string
+  content: string
+  metadata: Record<string, unknown>
+  created_at: string
+}
+
+export function bridgeToMessage(bm: BridgeMessage): Message {
+  return {
+    id: bm.id,
+    conversation_id: bm.work_item_id,
+    role: bm.sender_type === 'user' ? 'user' : bm.sender_type === 'agent' ? 'assistant' : 'system',
+    content: bm.content,
+    attachments: [],
+    metadata: bm.metadata,
+    created_at: bm.created_at,
+  }
+}
