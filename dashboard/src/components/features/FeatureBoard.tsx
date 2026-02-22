@@ -216,6 +216,7 @@ function PipelineProgress({ status }: { status: FeatureStatus }) {
             className={cn(
               "h-1 flex-1 rounded-full transition-all",
               isComplete ? "bg-green-400/60" :
+              isCurrent && s === 'done' ? "bg-green-400/80" :
               isCurrent ? "bg-purple-400/80" :
               "bg-white/10"
             )}
