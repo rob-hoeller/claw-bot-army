@@ -19,6 +19,7 @@ import {
   isDirectLLMAgent,
   streamDirectLLM,
 } from '@/lib/llm-direct'
+import { extractText } from '@/lib/file-processor'
 
 const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
 const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
@@ -145,7 +146,23 @@ async function flattenAttachmentsToText(
         const textContent = decodeBase64ToText(base64Data)
         parts.push(`--- File: ${att.name || 'unknown'} (${mediaType}) ---\n${textContent}\n--- End of file ---`)
       } else if (mediaType === 'application/pdf') {
-        parts.push(`[Attached PDF: ${att.name || 'document.pdf'} — PDF content extraction not yet supported.]`)
+        try {
+          const pdfBuffer = Buffer.from(base64Data, 'base64')
+          const result = await extractText(pdfBuffer, 'application/pdf')
+          if (result.text.trim()) {
+            const warnings = result.warnings.length > 0 ? `\n[Warnings: ${result.warnings.join('; ')}]` : ''
+            parts.push(`--- PDF: ${att.name || 'document.pdf'} (${result.pageCount || '?'} pages) ---\n${result.text}${warnings}\n--- End of PDF ---`)
+          } else {
+            parts.push(`[Attached PDF: ${att.name || 'document.pdf'} — no extractable text (may be scanned/image-only)]`)
+          }
+        } catch (pdfErr) {
+          const errMsg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr)
+          if (errMsg.toLowerCase().includes('encrypt') || errMsg.toLowerCase().includes('password')) {
+            parts.push(`[Attached PDF: ${att.name || 'document.pdf'} — password protected, cannot extract text]`)
+          } else {
+            parts.push(`[Attached PDF: ${att.name || 'document.pdf'} — extraction failed: ${errMsg}]`)
+          }
+        }
       } else {
         parts.push(`[Attached file: ${att.name || 'unknown'} (${mediaType}, ${Math.round(base64Data.length * 0.75 / 1024)}KB) — binary file.]`)
       }
@@ -195,10 +212,35 @@ async function buildResponsesBody(
           text: `--- File: ${att.name || 'unknown'} (${mediaType}) ---\n${textContent}\n--- End of file ---`,
         })
       } else if (mediaType === 'application/pdf') {
-        contentParts.push({
-          type: 'input_text',
-          text: `[Attached PDF: ${att.name || 'document.pdf'} — PDF content extraction not yet supported.]`,
-        })
+        try {
+          const pdfBuffer = Buffer.from(base64Data, 'base64')
+          const result = await extractText(pdfBuffer, 'application/pdf')
+          if (result.text.trim()) {
+            const warnings = result.warnings.length > 0 ? `\n[Warnings: ${result.warnings.join('; ')}]` : ''
+            contentParts.push({
+              type: 'input_text',
+              text: `--- PDF: ${att.name || 'document.pdf'} (${result.pageCount || '?'} pages) ---\n${result.text}${warnings}\n--- End of PDF ---`,
+            })
+          } else {
+            contentParts.push({
+              type: 'input_text',
+              text: `[Attached PDF: ${att.name || 'document.pdf'} — no extractable text (may be scanned/image-only)]`,
+            })
+          }
+        } catch (pdfErr) {
+          const errMsg = pdfErr instanceof Error ? pdfErr.message : String(pdfErr)
+          if (errMsg.toLowerCase().includes('encrypt') || errMsg.toLowerCase().includes('password')) {
+            contentParts.push({
+              type: 'input_text',
+              text: `[Attached PDF: ${att.name || 'document.pdf'} — password protected, cannot extract text]`,
+            })
+          } else {
+            contentParts.push({
+              type: 'input_text',
+              text: `[Attached PDF: ${att.name || 'document.pdf'} — extraction failed: ${errMsg}]`,
+            })
+          }
+        }
       } else {
         contentParts.push({
           type: 'input_text',
