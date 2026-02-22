@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 function getSupabase() {
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error("Supabase service role key is not configured")
+  }
   return createClient(supabaseUrl, supabaseKey)
 }
 
@@ -27,6 +28,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
+
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json(
+      { error: "SUPABASE_SERVICE_ROLE_KEY is not configured" },
+      { status: 500 }
+    )
+  }
 
   try {
     const body = await req.json()
