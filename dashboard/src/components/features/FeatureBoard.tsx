@@ -62,6 +62,9 @@ import { supabase } from "@/lib/supabase"
 import { useRealtimeFeatures } from "@/hooks/useRealtimeFeatures"
 import { ConnectionIndicator } from "./ConnectionIndicator"
 import { PipelineActivityFeed } from "./PipelineActivityFeed"
+import { PipelineStagePill } from "./PipelineStagePill"
+import { RevisionBadge } from "./RevisionBadge"
+import { PipelineLog, type PipelineLogEntry } from "./PipelineLog"
 
 // ─── Types ───────────────────────────────────────────────────────
 type FeatureStatus =
@@ -96,6 +99,9 @@ interface Feature {
   estimated_cost: number | null
   actual_cost: number | null
   cost_notes: string | null
+  current_agent: string | null
+  revision_count: number
+  pipeline_log: PipelineLogEntry[]
   created_at: string
   updated_at: string
 }
@@ -172,6 +178,21 @@ const statusConfig: Record<FeatureStatus, { color: string; label: string }> = {
   cancelled: { color: 'bg-red-500/20 text-red-400', label: 'Cancelled' },
 }
 
+// ─── Pipeline Helpers ────────────────────────────────────────────
+
+const STALLED_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
+
+function isStalledPipeline(feature: Feature): boolean {
+  if (!feature.current_agent || !feature.pipeline_log || feature.pipeline_log.length === 0) return false
+  const lastEntry = feature.pipeline_log[feature.pipeline_log.length - 1]
+  if (!lastEntry?.timestamp) return false
+  try {
+    return Date.now() - new Date(lastEntry.timestamp).getTime() > STALLED_THRESHOLD_MS
+  } catch {
+    return false
+  }
+}
+
 // ─── Demo Data ───────────────────────────────────────────────────
 const demoAgents: Agent[] = [
   { id: 'HBx', name: 'HBx', emoji: '🧠' },
@@ -192,6 +213,7 @@ const demoFeatures: Feature[] = [
     pr_url: null, pr_number: null, pr_status: null, branch_name: 'hbx/agent-communication',
     vercel_preview_url: null, feature_spec: null, design_spec: null,
     estimated_cost: 25, actual_cost: null, cost_notes: null,
+    current_agent: 'IN2', revision_count: 0, pipeline_log: [],
     created_at: new Date(Date.now() - 86400000).toISOString(), updated_at: new Date().toISOString(),
   },
   {
@@ -201,6 +223,7 @@ const demoFeatures: Feature[] = [
     pr_url: null, pr_number: null, pr_status: null, branch_name: null,
     vercel_preview_url: null, feature_spec: null, design_spec: null,
     estimated_cost: 10, actual_cost: null, cost_notes: null,
+    current_agent: null, revision_count: 0, pipeline_log: [],
     created_at: new Date(Date.now() - 172800000).toISOString(), updated_at: new Date().toISOString(),
   },
 ]
@@ -347,7 +370,8 @@ function SortableFeatureCard({
         onClick={onClick}
         className={cn(
           "p-2 rounded-md bg-white/[0.02] border border-white/5 hover:border-white/20 hover:bg-white/[0.04] transition-all cursor-pointer group",
-          isUpdating && "opacity-70"
+          isUpdating && "opacity-70",
+          (feature.revision_count || 0) >= 2 && "border-l-4 border-l-red-500"
         )}
       >
         {isUpdating && (
@@ -371,6 +395,18 @@ function SortableFeatureCard({
         <div className="pl-[18px] mb-1">
           <PipelineProgress status={feature.status} />
         </div>
+
+        {/* Pipeline stage pill + revision badge */}
+        {(feature.current_agent || feature.status === ('escalated' as FeatureStatus)) && (
+          <div className="flex items-center gap-1.5 pl-[18px] mb-1">
+            <PipelineStagePill
+              agent={feature.current_agent}
+              status={feature.status}
+              isStalled={isStalledPipeline(feature)}
+            />
+            <RevisionBadge count={feature.revision_count || 0} />
+          </div>
+        )}
 
         {/* Cost badges */}
         {(feature.estimated_cost != null || feature.actual_cost != null) && (
@@ -563,6 +599,9 @@ function CreateFeaturePanel({
         estimated_cost: null,
         actual_cost: null,
         cost_notes: null,
+        current_agent: null,
+        revision_count: 0,
+        pipeline_log: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -631,6 +670,9 @@ function CreateFeaturePanel({
         estimated_cost: null,
         actual_cost: null,
         cost_notes: null,
+        current_agent: null,
+        revision_count: 0,
+        pipeline_log: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -1186,6 +1228,18 @@ function FeatureDetailPanel({
             )}
             {!feature.branch_name && !feature.pr_url && !feature.vercel_preview_url && <p className="text-[11px] text-white/30">No links yet</p>}
           </div>
+
+          {/* Escalation Banner */}
+          {(feature.revision_count || 0) >= 2 && (
+            <div className="mx-3 mt-2 p-2 rounded bg-red-500/10 border border-red-500/20">
+              <p className="text-[11px] text-red-300 flex items-center gap-1.5">
+                ⚠️ This feature has been escalated after 2 revision loops. Awaiting Lance&apos;s review.
+              </p>
+            </div>
+          )}
+
+          {/* Pipeline Log */}
+          <PipelineLog log={feature.pipeline_log || []} />
 
           {feature.acceptance_criteria && (
             <div className="p-3 border-b border-white/5">

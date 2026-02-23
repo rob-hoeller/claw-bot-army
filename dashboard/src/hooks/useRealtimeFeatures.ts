@@ -36,6 +36,16 @@ export interface Feature {
   estimated_cost: number | null
   actual_cost: number | null
   cost_notes: string | null
+  current_agent: string | null
+  revision_count: number
+  pipeline_log: Array<{
+    timestamp: string
+    agent: string
+    stage: string
+    verdict: string
+    issues?: string[]
+    revision_loop?: number
+  }>
   created_at: string
   updated_at: string
 }
