@@ -118,21 +118,29 @@ export async function POST(
           notificationContent = `Feature "${data.title}" (${id}) has been approved and moved to ${target_status.replace(/_/g, ' ')}. It has been auto-assigned to ${autoAssignMap[target_status] || 'the next agent'}. Please route accordingly.`
         }
 
-        fetch(`${GATEWAY_URL}/v1/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'openclaw:HBx',
-            messages: [{
-              role: 'user',
-              content: notificationContent,
-            }],
-          }),
-        }).catch((err) => {
-          console.error('[API] Gateway notification failed for feature:', id, err)
+        const sendGatewayNotification = () =>
+          fetch(`${GATEWAY_URL}/v1/chat/completions`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${GATEWAY_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'openclaw:HBx',
+              messages: [{
+                role: 'user',
+                content: notificationContent,
+              }],
+            }),
+          })
+
+        // Fire with 1 retry after 5s on failure
+        sendGatewayNotification().catch(() => {
+          setTimeout(() => {
+            sendGatewayNotification().catch((err) => {
+              console.error('[API] Gateway notification failed (retry) for feature:', id, err)
+            })
+          }, 5000)
         })
       }
     }

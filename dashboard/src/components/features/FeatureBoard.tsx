@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import { motion, AnimatePresence, LayoutGroup } from "framer-motion"
 import {
   DndContext,
   DragOverlay,
@@ -23,7 +23,6 @@ import { useDroppable } from "@dnd-kit/core"
 import {
   Plus,
   Lightbulb,
-  Clock,
   PlayCircle,
   Eye,
   CheckCircle2,
@@ -60,6 +59,9 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { ErrorBanner } from "@/components/shared/ErrorBanner"
 import { supabase } from "@/lib/supabase"
+import { useRealtimeFeatures } from "@/hooks/useRealtimeFeatures"
+import { ConnectionIndicator } from "./ConnectionIndicator"
+import { PipelineActivityFeed } from "./PipelineActivityFeed"
 
 // ─── Types ───────────────────────────────────────────────────────
 type FeatureStatus =
@@ -312,12 +314,14 @@ function SortableFeatureCard({
   onClick,
   onStatusChange,
   isUpdating,
+  isJustMoved,
 }: {
   feature: Feature
   agents: Agent[]
   onClick: () => void
   onStatusChange: (status: FeatureStatus) => void
   isUpdating: boolean
+  isJustMoved?: boolean
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: feature.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
@@ -325,8 +329,20 @@ function SortableFeatureCard({
   const assignedAgent = agents.find(a => a.id === feature.assigned_to)
   const requestedAgent = agents.find(a => a.id === feature.requested_by)
 
+  // Stuck detection: >30min idle
+  const elapsedMs = Date.now() - new Date(feature.updated_at).getTime()
+  const isStuck = elapsedMs > 30 * 60 * 1000 && feature.status !== 'done' && feature.status !== 'cancelled'
+
   return (
-    <div ref={setNodeRef} style={style} {...attributes} className="relative">
+    <motion.div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      layoutId={feature.id}
+      layout
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className={cn("relative", isJustMoved && "animate-card-glow")}
+    >
       <div
         onClick={onClick}
         className={cn(
@@ -381,11 +397,14 @@ function SortableFeatureCard({
           <div className="flex items-center gap-1.5">
             {feature.vercel_preview_url && <span title="Vercel Preview"><Globe className="h-3 w-3 text-cyan-400" /></span>}
             {feature.pr_url && <GitPullRequest className={cn("h-3 w-3", feature.pr_status === 'merged' ? 'text-green-400' : 'text-purple-400')} />}
+            {isStuck && (
+              <span title="Stuck >30min" className="text-[9px] text-amber-500">⚠️</span>
+            )}
             <StatusDropdown currentStatus={feature.status} onStatusChange={onStatusChange} disabled={isUpdating} />
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -552,23 +571,33 @@ function CreateFeaturePanel({
       return
     }
 
-    try {
-      const res = await fetch('/api/features', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newFeature),
-      })
-      const payload = await res.json()
-      if (!res.ok) {
-        throw new Error(payload?.error || 'Failed to create')
+    // Retry logic: 1 retry after 2s on transient failure
+    const attemptCreate = async (attempt: number): Promise<boolean> => {
+      try {
+        const res = await fetch('/api/features', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newFeature),
+        })
+        const payload = await res.json()
+        if (!res.ok) {
+          throw new Error(payload?.error || 'Failed to create')
+        }
+        onCreated(payload.feature)
+        onClose()
+        return true
+      } catch (err) {
+        if (attempt < 1) {
+          await new Promise(r => setTimeout(r, 2000))
+          return attemptCreate(attempt + 1)
+        }
+        const msg = err instanceof Error ? err.message : "Unknown error"
+        setNotice({ type: 'error', message: `Couldn't create feature: ${msg}. Check connection and try again.` })
+        return false
       }
-      onCreated(payload.feature)
-      onClose()
-    } catch {
-      setNotice({ type: 'error', message: "Couldn't create feature. Check connection and try again." })
-    } finally {
-      setSaving(false)
     }
+    await attemptCreate(0)
+    setSaving(false)
   }
 
   const handleCreate = async () => {
@@ -610,23 +639,32 @@ function CreateFeaturePanel({
       return
     }
 
-    try {
-      const res = await fetch('/api/features', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newFeature),
-      })
-      const payload = await res.json()
-      if (!res.ok) {
-        throw new Error(payload?.error || 'Failed to create')
+    const attemptFormCreate = async (attempt: number): Promise<boolean> => {
+      try {
+        const res = await fetch('/api/features', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newFeature),
+        })
+        const payload = await res.json()
+        if (!res.ok) {
+          throw new Error(payload?.error || 'Failed to create')
+        }
+        onCreated(payload.feature)
+        onClose()
+        return true
+      } catch (err) {
+        if (attempt < 1) {
+          await new Promise(r => setTimeout(r, 2000))
+          return attemptFormCreate(attempt + 1)
+        }
+        const msg = err instanceof Error ? err.message : "Unknown error"
+        setNotice({ type: 'error', message: `Couldn't create feature: ${msg}. Check connection and try again.` })
+        return false
       }
-      onCreated(payload.feature)
-      onClose()
-    } catch {
-      setNotice({ type: 'error', message: "Couldn't create feature. Check connection and try again." })
-    } finally {
-      setSaving(false)
     }
+    await attemptFormCreate(0)
+    setSaving(false)
   }
 
   return (
@@ -1280,6 +1318,8 @@ function DroppableColumn({
   onFeatureClick,
   onStatusChange,
   updatingIds,
+  justMovedIds,
+  colIndex,
 }: {
   column: typeof columns[0]
   features: Feature[]
@@ -1287,6 +1327,8 @@ function DroppableColumn({
   onFeatureClick: (feature: Feature) => void
   onStatusChange: (featureId: string, status: FeatureStatus) => void
   updatingIds: Record<string, boolean>
+  justMovedIds: Set<string>
+  colIndex: number
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: column.id })
   const Icon = column.icon
@@ -1299,11 +1341,14 @@ function DroppableColumn({
     : allColumnFeatures
   const hiddenCount = allColumnFeatures.length - columnFeatures.length
 
+  // Alternating lane backgrounds per design spec
+  const laneBg = colIndex % 2 === 0 ? "bg-[#1a1a2e]/30" : "bg-[#16213e]/30"
+
   return (
-    <div className="flex-shrink-0 w-[170px]">
-      <div className="flex items-center gap-1.5 mb-2 px-1">
+    <div className={cn("flex-shrink-0 w-[170px] rounded-md", laneBg)}>
+      <div className="flex items-center gap-1.5 mb-2 px-1 pt-1">
         <Icon className={cn("h-3 w-3", column.color)} />
-        <h3 className="text-[10px] font-medium text-white/80 truncate">{column.label}</h3>
+        <h3 className="text-[10px] font-medium text-white/60 truncate uppercase tracking-wider">{column.label}</h3>
         <span className="text-[9px] text-white/30 bg-white/5 px-1 rounded">{allColumnFeatures.length}</span>
         {(() => {
           const total = allColumnFeatures.reduce((sum, f) => sum + (f.estimated_cost || 0), 0)
@@ -1314,7 +1359,7 @@ function DroppableColumn({
           ) : null
         })()}
       </div>
-      <div ref={setNodeRef} className={cn("space-y-1.5 min-h-[100px] rounded-md p-1 transition-all", isOver && "bg-purple-400/5 ring-1 ring-purple-400/20")}>
+      <div ref={setNodeRef} className={cn("space-y-2 min-h-[100px] rounded-md p-1 transition-all", isOver && "bg-purple-400/5 ring-1 ring-purple-400/20")}>
         <SortableContext items={columnFeatures.map(f => f.id)} strategy={verticalListSortingStrategy}>
           {columnFeatures.map((feature) => (
             <SortableFeatureCard
@@ -1324,6 +1369,7 @@ function DroppableColumn({
               onClick={() => onFeatureClick(feature)}
               onStatusChange={(status) => onStatusChange(feature.id, status)}
               isUpdating={Boolean(updatingIds[feature.id])}
+              isJustMoved={justMovedIds.has(feature.id)}
             />
           ))}
         </SortableContext>
@@ -1336,7 +1382,7 @@ function DroppableColumn({
           <button onClick={() => setShowAllDone(false)} className="w-full p-1.5 text-[10px] text-white/40 hover:text-white/60 bg-white/5 hover:bg-white/10 rounded transition-all">Collapse</button>
         )}
         {allColumnFeatures.length === 0 && !isOver && (
-          <div className="p-2 rounded border border-dashed border-white/10 text-center"><p className="text-[10px] text-white/20">Empty</p></div>
+          <div className="p-2 rounded border border-dashed border-white/10 text-center"><p className="text-[10px] text-white/20">No features</p></div>
         )}
       </div>
     </div>
@@ -1345,7 +1391,16 @@ function DroppableColumn({
 
 // ─── Main Component ──────────────────────────────────────────────
 export function FeatureBoard() {
-  const [features, setFeatures] = useState<Feature[]>([])
+  const {
+    features,
+    setFeatures,
+    connectionStatus,
+    activityLog,
+    justMoved,
+    isLoading: realtimeLoading,
+    isDemoMode,
+    lastConnectedAt,
+  } = useRealtimeFeatures()
   const [agents, setAgents] = useState<Agent[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -1355,49 +1410,44 @@ export function FeatureBoard() {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [boardNotice, setBoardNotice] = useState<{ type: 'error' | 'info'; message: string } | null>(null)
   const [updatingIds, setUpdatingIds] = useState<Record<string, boolean>>({})
-  const isDemoMode = !supabase
+  const [showActivityFeed, setShowActivityFeed] = useState(false)
+  const [clock, setClock] = useState(() => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+
+  // Clock tick every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setClock(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+    }, 60_000)
+    return () => clearInterval(interval)
+  }, [])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor)
   )
 
-  const loadData = useCallback(async () => {
+  // Keep selected feature in sync with realtime updates
+  useEffect(() => {
+    if (selectedFeature) {
+      const updated = features.find(f => f.id === selectedFeature.id)
+      if (updated && updated !== selectedFeature) setSelectedFeature(updated)
+    }
+  }, [features, selectedFeature])
+
+  const loadAgents = useCallback(async () => {
     if (isDemoMode) { setFeatures(demoFeatures); setAgents(demoAgents); setIsLoading(false); return }
     try {
       const sb = supabase!
-      const [{ data: fd, error: fe }, { data: ad, error: ae }] = await Promise.all([
-        sb.from('features').select('*').neq('status', 'cancelled').order('priority', { ascending: false }).order('created_at', { ascending: false }),
-        sb.from('agents').select('id, name, emoji'),
-      ])
-      if (fe) throw fe
+      const { data: ad, error: ae } = await sb.from('agents').select('id, name, emoji')
       if (ae) throw ae
-      setFeatures(fd || [])
       setAgents(ad || [])
     } catch (err) {
-      console.error('Error loading data:', err)
-      setFeatures(demoFeatures)
+      console.error('Error loading agents:', err)
       setAgents(demoAgents)
     } finally { setIsLoading(false) }
   }, [isDemoMode])
 
-  useEffect(() => { loadData() }, [loadData])
-
-  useEffect(() => {
-    if (!supabase) return
-    const channel = supabase.channel('features-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'features' }, (payload) => {
-        if (payload.eventType === 'INSERT') setFeatures(prev => [payload.new as Feature, ...prev])
-        else if (payload.eventType === 'UPDATE') {
-          const updated = payload.new as Feature
-          setFeatures(prev => prev.map(f => f.id === updated.id ? updated : f))
-          setSelectedFeature(prev => prev && prev.id === updated.id ? updated : prev)
-        } else if (payload.eventType === 'DELETE') {
-          setFeatures(prev => prev.filter(f => f.id !== (payload.old as { id: string }).id))
-        }
-      }).subscribe()
-    return () => { supabase!.removeChannel(channel) }
-  }, [])
+  useEffect(() => { loadAgents() }, [loadAgents])
 
   const handleStatusChange = useCallback(async (featureId: string, newStatus: FeatureStatus) => {
     // Check valid transition
@@ -1507,7 +1557,7 @@ export function FeatureBoard() {
     return true
   })
 
-  if (isLoading) {
+  if (isLoading || realtimeLoading) {
     return (
       <div className="flex items-center justify-center h-40">
         <div className="flex items-center gap-2">
@@ -1520,19 +1570,40 @@ export function FeatureBoard() {
 
   return (
     <div className="space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      {/* Top Bar */}
+      <div className="flex items-center justify-between h-10">
+        <div className="flex items-center gap-3">
+          <ConnectionIndicator status={connectionStatus} lastConnectedAt={lastConnectedAt} />
           <h2 className="text-sm font-semibold text-white flex items-center gap-2">
             <Rocket className="h-4 w-4 text-purple-400" />
-            Feature Pipeline
+            PIPELINE BOARD
           </h2>
-          <p className="text-[11px] text-white/40">planning → design → build → QA → review → approve → PR → done</p>
         </div>
-        <Button size="sm" className="h-7 text-xs gap-1" onClick={() => setShowCreate(true)}>
-          <Plus className="h-3 w-3" />New
-        </Button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowActivityFeed(!showActivityFeed)}
+            className={cn(
+              "px-2 py-1 text-[10px] rounded transition-all border",
+              showActivityFeed
+                ? "bg-blue-500/20 text-blue-300 border-blue-500/30"
+                : "text-white/40 border-white/10 hover:text-white/60 hover:border-white/20"
+            )}
+          >
+            Activity Feed {showActivityFeed ? "◂" : "▸"}
+          </button>
+          <span className="text-[11px] text-white/30 font-mono">{clock}</span>
+          <Button size="sm" className="h-7 text-xs gap-1" onClick={() => setShowCreate(true)}>
+            <Plus className="h-3 w-3" />New
+          </Button>
+        </div>
       </div>
+
+      {/* Activity Feed Sidebar */}
+      <PipelineActivityFeed
+        events={activityLog}
+        open={showActivityFeed}
+        onClose={() => setShowActivityFeed(false)}
+      />
 
       {isDemoMode && (
         <div className="px-2 py-1.5 rounded bg-yellow-500/10 border border-yellow-500/20">
@@ -1580,24 +1651,28 @@ export function FeatureBoard() {
       </div>
 
       {/* Board */}
-      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-        <div className="flex gap-1.5 overflow-x-auto pb-2">
-          {columns.map((column) => (
-            <DroppableColumn
-              key={column.id}
-              column={column}
-              features={filteredFeatures}
-              agents={agents}
-              onFeatureClick={setSelectedFeature}
-              onStatusChange={handleStatusChange}
-              updatingIds={updatingIds}
-            />
-          ))}
-        </div>
-        <DragOverlay>
-          {activeFeature ? <FeatureCardPlain feature={activeFeature} /> : null}
-        </DragOverlay>
-      </DndContext>
+      <LayoutGroup>
+        <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+          <div className="flex gap-1.5 overflow-x-auto pb-2">
+            {columns.map((column, colIdx) => (
+              <DroppableColumn
+                key={column.id}
+                column={column}
+                features={filteredFeatures}
+                agents={agents}
+                onFeatureClick={setSelectedFeature}
+                onStatusChange={handleStatusChange}
+                updatingIds={updatingIds}
+                justMovedIds={justMoved}
+                colIndex={colIdx}
+              />
+            ))}
+          </div>
+          <DragOverlay>
+            {activeFeature ? <FeatureCardPlain feature={activeFeature} /> : null}
+          </DragOverlay>
+        </DndContext>
+      </LayoutGroup>
 
       {/* Panels */}
       <AnimatePresence>
