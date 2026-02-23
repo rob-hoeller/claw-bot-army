@@ -1082,24 +1082,10 @@ function FeatureDetailPanel({
             <div className="p-3 border-b border-white/5"><p className="text-xs text-white/70">{feature.description}</p></div>
           )}
           <div className="p-3 border-b border-white/5 space-y-2">
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
+            <div className="flex flex-col gap-1.5 text-[11px]">
               <div className="flex items-center gap-1.5">
-                <User className="h-3 w-3 text-white/30" /><span className="text-white/50">Requested:</span>
-                {requestedAgent ? <span className="text-white/80">{requestedAgent.emoji} {requestedAgent.id}</span> : <span className="text-white/40">—</span>}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Bot className="h-3 w-3 text-white/30" /><span className="text-white/50">Assigned:</span>
-                {showReassign ? (
-                  <select className="bg-white/10 text-white/80 text-[10px] rounded px-1 py-0.5 border border-white/10" value={feature.assigned_to || ''}
-                    onChange={(e) => { onReassign(e.target.value || null); setShowReassign(false) }} onBlur={() => setShowReassign(false)} autoFocus>
-                    <option value="">Unassigned</option>
-                    {agents.map(a => (<option key={a.id} value={a.id}>{a.emoji} {a.id} — {a.name}</option>))}
-                  </select>
-                ) : (
-                  <button onClick={() => setShowReassign(true)} className="text-white/80 hover:text-purple-300 transition-colors cursor-pointer" title="Click to reassign">
-                    {assignedAgent ? <>{assignedAgent.emoji} {assignedAgent.id}</> : <span className="text-white/40">Unassigned — click to assign</span>}
-                  </button>
-                )}
+                <User className="h-3 w-3 text-white/30" /><span className="text-white/50">Created by:</span>
+                <span className="text-white/80">{feature.requested_by || '—'}</span>
               </div>
               {feature.approved_by && (
                 <div className="flex items-center gap-1.5">
@@ -1107,21 +1093,23 @@ function FeatureDetailPanel({
                 </div>
               )}
               <div className="flex items-center gap-1.5">
-                <Calendar className="h-3 w-3 text-white/30" /><span className="text-white/50">Created:</span><span className="text-white/80">{new Date(feature.created_at).toLocaleDateString()}</span>
+                <Calendar className="h-3 w-3 text-white/30" /><span className="text-white/50">Created:</span><span className="text-white/80">{new Date(feature.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
               </div>
             </div>
 
-            {feature.status !== 'cancelled' && feature.status !== 'done' && (
-              <button onClick={() => { if (window.confirm('Cancel this feature?')) onStatusChange('cancelled') }}
-                className="mt-2 flex items-center gap-1 text-[10px] text-red-400/60 hover:text-red-400 transition-colors">
-                <X className="h-3 w-3" />Cancel Feature
-              </button>
-            )}
-            {feature.labels && feature.labels.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {feature.labels.map((label) => (<span key={label} className="px-1.5 py-0.5 text-[9px] rounded bg-white/5 text-white/50">{label}</span>))}
-              </div>
-            )}
+            <div className="flex items-center justify-between mt-1">
+              {feature.labels && feature.labels.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {feature.labels.map((label) => (<span key={label} className="px-1.5 py-0.5 text-[9px] rounded bg-white/5 text-white/50">{label}</span>))}
+                </div>
+              )}
+              {feature.status !== 'cancelled' && feature.status !== 'done' && (
+                <button onClick={() => { if (window.confirm('Cancel this feature?')) onStatusChange('cancelled') }}
+                  className="ml-auto px-2.5 py-1 text-[10px] rounded border border-red-500/20 bg-red-500/5 text-red-400/70 hover:bg-red-500/15 hover:text-red-400 hover:border-red-500/40 transition-all flex items-center gap-1">
+                  <X className="h-3 w-3" />Cancel
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="p-3 border-b border-white/5 space-y-1.5">
