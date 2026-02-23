@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
 
     if (action === 'alerts') {
       if (!supabaseUrl || !supabaseServiceKey) {
-        return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 })
+        return NextResponse.json({ error: 'Server misconfiguration: Supabase environment variables not set. Contact admin.' }, { status: 503 })
       }
 
       const supabase = createClient(supabaseUrl, supabaseServiceKey)

@@ -25,7 +25,7 @@ function getServiceClient() {
 export async function POST(request: NextRequest) {
   const sb = getServiceClient()
   if (!sb) {
-    return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 })
+    return NextResponse.json({ error: 'Server misconfiguration: Supabase environment variables not set. Contact admin.' }, { status: 503 })
   }
 
   try {

@@ -322,7 +322,7 @@ export async function POST(request: NextRequest) {
 
     // ── HBx: route through gateway (full tool/memory support) ────
     if (!GATEWAY_TOKEN) {
-      return NextResponse.json({ error: 'Gateway token not configured' }, { status: 500 })
+      return NextResponse.json({ error: 'Server misconfiguration: Gateway token not configured. Contact admin.' }, { status: 503 })
     }
 
     const systemPrompt = await buildAgentSystemPrompt(agentId)
