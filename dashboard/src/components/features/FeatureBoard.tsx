@@ -62,6 +62,9 @@ import { supabase } from "@/lib/supabase"
 import { useRealtimeFeatures } from "@/hooks/useRealtimeFeatures"
 import { ConnectionIndicator } from "./ConnectionIndicator"
 import { PipelineActivityFeed } from "./PipelineActivityFeed"
+import { PipelineStagePill } from "./PipelineStagePill"
+import { RevisionBadge } from "./RevisionBadge"
+import { PipelineLog, type PipelineLogEntry } from "./PipelineLog"
 
 // ─── Types ───────────────────────────────────────────────────────
 type FeatureStatus =
@@ -96,6 +99,9 @@ interface Feature {
   estimated_cost: number | null
   actual_cost: number | null
   cost_notes: string | null
+  current_agent: string | null
+  revision_count: number
+  pipeline_log: PipelineLogEntry[]
   created_at: string
   updated_at: string
 }
@@ -172,6 +178,21 @@ const statusConfig: Record<FeatureStatus, { color: string; label: string }> = {
   cancelled: { color: 'bg-red-500/20 text-red-400', label: 'Cancelled' },
 }
 
+// ─── Pipeline Helpers ────────────────────────────────────────────
+
+const STALLED_THRESHOLD_MS = 5 * 60 * 1000 // 5 minutes
+
+function isStalledPipeline(feature: Feature): boolean {
+  if (!feature.current_agent || !feature.pipeline_log || feature.pipeline_log.length === 0) return false
+  const lastEntry = feature.pipeline_log[feature.pipeline_log.length - 1]
+  if (!lastEntry?.timestamp) return false
+  try {
+    return Date.now() - new Date(lastEntry.timestamp).getTime() > STALLED_THRESHOLD_MS
+  } catch {
+    return false
+  }
+}
+
 // ─── Demo Data ───────────────────────────────────────────────────
 const demoAgents: Agent[] = [
   { id: 'HBx', name: 'HBx', emoji: '🧠' },
@@ -192,6 +213,7 @@ const demoFeatures: Feature[] = [
     pr_url: null, pr_number: null, pr_status: null, branch_name: 'hbx/agent-communication',
     vercel_preview_url: null, feature_spec: null, design_spec: null,
     estimated_cost: 25, actual_cost: null, cost_notes: null,
+    current_agent: 'IN2', revision_count: 0, pipeline_log: [],
     created_at: new Date(Date.now() - 86400000).toISOString(), updated_at: new Date().toISOString(),
   },
   {
@@ -201,6 +223,7 @@ const demoFeatures: Feature[] = [
     pr_url: null, pr_number: null, pr_status: null, branch_name: null,
     vercel_preview_url: null, feature_spec: null, design_spec: null,
     estimated_cost: 10, actual_cost: null, cost_notes: null,
+    current_agent: null, revision_count: 0, pipeline_log: [],
     created_at: new Date(Date.now() - 172800000).toISOString(), updated_at: new Date().toISOString(),
   },
 ]
@@ -347,7 +370,8 @@ function SortableFeatureCard({
         onClick={onClick}
         className={cn(
           "p-2 rounded-md bg-white/[0.02] border border-white/5 hover:border-white/20 hover:bg-white/[0.04] transition-all cursor-pointer group",
-          isUpdating && "opacity-70"
+          isUpdating && "opacity-70",
+          (feature.revision_count || 0) >= 2 && "border-l-4 border-l-red-500"
         )}
       >
         {isUpdating && (
@@ -371,6 +395,18 @@ function SortableFeatureCard({
         <div className="pl-[18px] mb-1">
           <PipelineProgress status={feature.status} />
         </div>
+
+        {/* Pipeline stage pill + revision badge */}
+        {(feature.current_agent || feature.status === ('escalated' as FeatureStatus)) && (
+          <div className="flex items-center gap-1.5 pl-[18px] mb-1">
+            <PipelineStagePill
+              agent={feature.current_agent}
+              status={feature.status}
+              isStalled={isStalledPipeline(feature)}
+            />
+            <RevisionBadge count={feature.revision_count || 0} />
+          </div>
+        )}
 
         {/* Cost badges */}
         {(feature.estimated_cost != null || feature.actual_cost != null) && (
@@ -433,11 +469,7 @@ function CreateFeaturePanel({
   onCreated: (feature: Feature) => void
   isDemoMode: boolean
 }) {
-  const [title, setTitle] = useState("")
-  const [description, setDescription] = useState("")
-  const [priority, setPriority] = useState<Feature['priority']>("medium")
-  const [assignedTo, setAssignedTo] = useState("")
-  const [labels, setLabels] = useState("")
+  // Form state removed (chat-only flow)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<{ type: 'error' | 'info'; message: string } | null>(null)
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([
@@ -447,7 +479,7 @@ function CreateFeaturePanel({
   const [chatting, setChatting] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
-  const [mode, setMode] = useState<'chat' | 'form'>('chat')
+  // chat-only mode
   const chatEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
 
@@ -477,7 +509,7 @@ function CreateFeaturePanel({
       if (!res.ok || !res.body) {
         setChatMessages(prev => [...prev, {
           role: 'assistant',
-          content: "I'm having trouble connecting. You can use the Form tab to create the feature manually.",
+          content: "I'm having trouble connecting. Please try again in a moment.",
         }])
         return
       }
@@ -513,6 +545,10 @@ function CreateFeaturePanel({
     }
   }
 
+  const requestedBy = agents.some(a => a.id === 'Lance')
+    ? 'Lance'
+    : (agents.find(a => a.id === 'HBx')?.id ?? agents[0]?.id ?? null)
+
   const handleCreateFromChat = async () => {
     if (saving) return
     setSaving(true)
@@ -537,13 +573,15 @@ function CreateFeaturePanel({
       extractedTitle = firstUser ? firstUser.content.slice(0, 80) : 'Untitled Feature'
     }
 
+    // requestedBy resolved above
+
     const newFeature = {
       title: extractedTitle.trim(),
       description: null,
       priority: 'medium' as const,
       status: 'planning' as const,
       assigned_to: 'HBx_IN1',
-      requested_by: 'Lance',
+      requested_by: requestedBy,
       labels: null,
       feature_spec: transcript,
     }
@@ -563,6 +601,9 @@ function CreateFeaturePanel({
         estimated_cost: null,
         actual_cost: null,
         cost_notes: null,
+        current_agent: null,
+        revision_count: 0,
+        pipeline_log: [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
@@ -600,72 +641,7 @@ function CreateFeaturePanel({
     setSaving(false)
   }
 
-  const handleCreate = async () => {
-    if (!title.trim()) return
-    setSaving(true)
-    setNotice(null)
-
-    const newFeature = {
-      title: title.trim(),
-      description: description.trim() || null,
-      priority,
-      status: 'planning' as const,
-      assigned_to: assignedTo || null,
-      requested_by: 'Lance',
-      labels: labels.trim() ? labels.split(',').map(l => l.trim()) : null,
-    }
-
-    if (isDemoMode) {
-      onCreated({
-        ...newFeature,
-        id: crypto.randomUUID(),
-        approved_by: null,
-        acceptance_criteria: null,
-        pr_url: null,
-        pr_number: null,
-        pr_status: null,
-        branch_name: null,
-        vercel_preview_url: null,
-        feature_spec: null,
-        design_spec: null,
-        estimated_cost: null,
-        actual_cost: null,
-        cost_notes: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      onClose()
-      setSaving(false)
-      return
-    }
-
-    const attemptFormCreate = async (attempt: number): Promise<boolean> => {
-      try {
-        const res = await fetch('/api/features', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newFeature),
-        })
-        const payload = await res.json()
-        if (!res.ok) {
-          throw new Error(payload?.error || 'Failed to create')
-        }
-        onCreated(payload.feature)
-        onClose()
-        return true
-      } catch (err) {
-        if (attempt < 1) {
-          await new Promise(r => setTimeout(r, 2000))
-          return attemptFormCreate(attempt + 1)
-        }
-        const msg = err instanceof Error ? err.message : "Unknown error"
-        setNotice({ type: 'error', message: `Couldn't create feature: ${msg}` })
-        return false
-      }
-    }
-    await attemptFormCreate(0)
-    setSaving(false)
-  }
+  // handleCreate removed (chat-only flow)
 
   return (
     <motion.div
@@ -680,14 +656,8 @@ function CreateFeaturePanel({
           <h2 className="text-sm font-semibold text-white">New Feature</h2>
           <Button variant="ghost" size="icon" onClick={onClose} className="h-7 w-7"><X className="h-4 w-4" /></Button>
         </div>
-        {/* Mode tabs */}
-        <div className="flex gap-1 mt-2">
-          <button onClick={() => setMode('chat')} className={cn("px-2 py-1 text-[10px] rounded transition-all", mode === 'chat' ? "bg-purple-500/20 text-purple-300" : "text-white/40 hover:text-white/60")}>
-            <MessageSquare className="h-3 w-3 inline mr-1" />Planning Chat
-          </button>
-          <button onClick={() => setMode('form')} className={cn("px-2 py-1 text-[10px] rounded transition-all", mode === 'form' ? "bg-white/10 text-white/80" : "text-white/40 hover:text-white/60")}>
-            <FileText className="h-3 w-3 inline mr-1" />Form
-          </button>
+        <div className="mt-2 inline-flex items-center gap-1 rounded-md bg-purple-500/10 px-2 py-1 text-[10px] text-purple-300">
+          <MessageSquare className="h-3 w-3" />Planning Chat
         </div>
       </div>
 
@@ -704,8 +674,7 @@ function CreateFeaturePanel({
         </div>
       )}
 
-      {mode === 'chat' ? (
-        <>
+      <>
           {/* Chat messages */}
           <div className="flex-1 overflow-y-auto p-3 space-y-3" role="log" aria-live="polite">
             {chatMessages.map((msg, i) => (
@@ -771,61 +740,9 @@ function CreateFeaturePanel({
                 {chatting || isStreaming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
               </Button>
             </div>
-            <p className="text-[9px] text-white/20 mt-1">Plan with IN1, then create directly • Or use Form tab for quick entry</p>
+            <p className="text-[9px] text-white/20 mt-1">Plan with IN1, then create directly.</p>
           </div>
-        </>
-      ) : (
-        <>
-          {/* Form */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            <div>
-              <label className="text-[10px] text-white/40 uppercase tracking-wider">Title *</label>
-              <Input placeholder="Feature title..." value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1 h-8 text-xs bg-white/5 border-white/10" autoFocus />
-            </div>
-            <div>
-              <label className="text-[10px] text-white/40 uppercase tracking-wider">Description</label>
-              <textarea placeholder="What should this feature do?" value={description} onChange={(e) => setDescription(e.target.value)}
-                className="mt-1 w-full h-20 text-xs bg-white/5 border border-white/10 rounded-md p-2 text-white/80 placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-purple-400/50 resize-none" />
-            </div>
-            <div>
-              <label className="text-[10px] text-white/40 uppercase tracking-wider">Priority</label>
-              <div className="flex gap-1.5 mt-1">
-                {(['low', 'medium', 'high', 'urgent'] as const).map((p) => (
-                  <button key={p} onClick={() => setPriority(p)}
-                    className={cn("px-2 py-1 text-[10px] rounded border transition-all", priority === p ? priorityConfig[p].color : "bg-white/5 text-white/40 border-white/10 hover:bg-white/10")}>
-                    {priorityConfig[p].label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label className="text-[10px] text-white/40 uppercase tracking-wider">Assign To</label>
-              <select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}
-                className="mt-1 w-full h-8 text-xs bg-white/5 border border-white/10 rounded-md px-2 text-white/80 focus:outline-none focus:ring-1 focus:ring-purple-400/50">
-                <option value="">Unassigned</option>
-                {agents.map((a) => (<option key={a.id} value={a.id}>{a.emoji} {a.name} ({a.id})</option>))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-white/40 uppercase tracking-wider">Labels</label>
-              <Input placeholder="ui, core, sales (comma separated)" value={labels} onChange={(e) => setLabels(e.target.value)} className="mt-1 h-8 text-xs bg-white/5 border-white/10" />
-            </div>
-          </div>
-          <div className="flex-shrink-0 p-3 border-t border-white/10 flex gap-2">
-            <Button variant="ghost" onClick={onClose} className="h-8 text-xs flex-1">Cancel</Button>
-            <Button onClick={handleCreate} disabled={!title.trim() || saving} className="h-8 text-xs flex-1 bg-purple-600 hover:bg-purple-500">
-              {saving ? (
-                <>
-                  <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
-                  Creating...
-                </>
-              ) : (
-                "Create Feature"
-              )}
-            </Button>
-          </div>
-        </>
-      )}
+      </>
     </motion.div>
   )
 }
@@ -1186,6 +1103,18 @@ function FeatureDetailPanel({
             )}
             {!feature.branch_name && !feature.pr_url && !feature.vercel_preview_url && <p className="text-[11px] text-white/30">No links yet</p>}
           </div>
+
+          {/* Escalation Banner */}
+          {(feature.revision_count || 0) >= 2 && (
+            <div className="mx-3 mt-2 p-2 rounded bg-red-500/10 border border-red-500/20">
+              <p className="text-[11px] text-red-300 flex items-center gap-1.5">
+                ⚠️ This feature has been escalated after 2 revision loops. Awaiting Lance&apos;s review.
+              </p>
+            </div>
+          )}
+
+          {/* Pipeline Log */}
+          <PipelineLog log={feature.pipeline_log || []} />
 
           {feature.acceptance_criteria && (
             <div className="p-3 border-b border-white/5">

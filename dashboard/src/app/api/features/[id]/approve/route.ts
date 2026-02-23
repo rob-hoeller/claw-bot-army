@@ -111,9 +111,14 @@ export async function POST(
         if (target_status === 'approved') {
           notificationContent = [
             `🚀 Feature "${data.title}" (ID: ${id}) has been APPROVED by ${approved_by || 'Lance'}.`,
-            `Branch: ${data.branch || 'unknown'}`,
+            `Branch: ${data.branch_name || 'unknown'}`,
+            `Status: ${data.status}`,
+            `Current Agent: ${data.current_agent || 'none'}`,
+            `Revision Count: ${data.revision_count || 0}`,
+            data.feature_spec ? `Feature Spec (excerpt): ${data.feature_spec.slice(0, 500)}` : '',
+            data.acceptance_criteria ? `Acceptance Criteria: ${data.acceptance_criteria}` : '',
             `**Please submit the PR to main now.**`,
-          ].join('\n')
+          ].filter(Boolean).join('\n')
         } else {
           notificationContent = `Feature "${data.title}" (${id}) has been approved and moved to ${target_status.replace(/_/g, ' ')}. It has been auto-assigned to ${autoAssignMap[target_status] || 'the next agent'}. Please route accordingly.`
         }
