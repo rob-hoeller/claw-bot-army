@@ -75,7 +75,7 @@ export async function POST(
 
   // HBx: stream through gateway
   if (!GATEWAY_TOKEN) {
-    return NextResponse.json({ error: 'Gateway token not configured' }, { status: 500 })
+    return NextResponse.json({ error: 'Server misconfiguration: Gateway token not configured. Contact admin.' }, { status: 503 })
   }
 
   const sessionKey = `work-item-${id}-${agentId}`

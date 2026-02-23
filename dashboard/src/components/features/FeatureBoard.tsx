@@ -592,7 +592,7 @@ function CreateFeaturePanel({
           return attemptCreate(attempt + 1)
         }
         const msg = err instanceof Error ? err.message : "Unknown error"
-        setNotice({ type: 'error', message: `Couldn't create feature: ${msg}. Check connection and try again.` })
+        setNotice({ type: 'error', message: `Couldn't create feature: ${msg}` })
         return false
       }
     }
@@ -659,7 +659,7 @@ function CreateFeaturePanel({
           return attemptFormCreate(attempt + 1)
         }
         const msg = err instanceof Error ? err.message : "Unknown error"
-        setNotice({ type: 'error', message: `Couldn't create feature: ${msg}. Check connection and try again.` })
+        setNotice({ type: 'error', message: `Couldn't create feature: ${msg}` })
         return false
       }
     }
@@ -895,12 +895,13 @@ function ApproveButton({
             body: JSON.stringify({ target_status: targetStatus, approved_by: 'Lance' }),
           })
           if (!res.ok) {
-            onError("Update failed. Try again.")
+            const body = await res.json().catch(() => null)
+            onError(body?.error ?? "Update failed. Try again.")
             return
           }
           onApprove(targetStatus)
         } catch {
-          onError("Update failed. Try again.")
+          onError("Update failed. Check connection and try again.")
         } finally {
           setLoading(false)
         }

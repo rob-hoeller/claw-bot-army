@@ -31,8 +31,8 @@ export async function POST(
 
   if (!supabaseUrl || !supabaseKey) {
     return NextResponse.json(
-      { error: "SUPABASE_SERVICE_ROLE_KEY is not configured" },
-      { status: 500 }
+      { error: "Server misconfiguration: missing required environment variables (SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY). Contact admin." },
+      { status: 503 }
     )
   }
 

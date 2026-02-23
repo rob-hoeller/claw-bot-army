@@ -8,8 +8,8 @@ export async function GET() {
   try {
     if (!supabaseUrl || !supabaseServiceKey) {
       return NextResponse.json(
-        { error: 'Supabase not configured' },
-        { status: 500 }
+        { error: 'Server misconfiguration: Supabase environment variables not set. Contact admin.' },
+        { status: 503 }
       )
     }
 
