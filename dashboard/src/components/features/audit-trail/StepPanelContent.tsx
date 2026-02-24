@@ -181,17 +181,23 @@ export function StepPanelContent({
       )}
 
       {/* Vercel Preview Link (prominent for review phase) */}
-      {showPreviewLink && (
-        <a
-          href={vercelPreviewUrl!}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-[11px] font-medium bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-600/30 transition-colors"
-        >
-          <Globe className="h-4 w-4" />
-          Open Vercel Preview
-          <ExternalLink className="h-3 w-3" />
-        </a>
+      {phase === "review" && (
+        vercelPreviewUrl ? (
+          <a
+            href={vercelPreviewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-[11px] font-medium bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-600/30 transition-colors"
+          >
+            <Globe className="h-4 w-4" />
+            Open Vercel Preview
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        ) : (
+          <div className="flex items-center justify-center gap-2 px-3 py-2.5 rounded-md text-[11px] font-medium bg-white/[0.03] border border-white/10 text-white/40">
+            ⏳ Preview link pending...
+          </div>
+        )
       )}
 
       {/* Approval Status */}
