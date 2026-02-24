@@ -79,7 +79,7 @@ export async function POST(
           model: "openclaw:HBx",
           messages: [{
             role: "user",
-            content: `🚀 Pipeline triggered for feature "${data.title}" (ID: ${id}). Status changed to approved. Please route this feature through the build pipeline.`,
+            content: `🚀 Pipeline triggered for feature "${data.title}" (ID: ${id}). Status changed to design_review. Please route this feature through the build pipeline.`,
           }],
         }),
       }).catch(() => {})
