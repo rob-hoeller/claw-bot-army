@@ -1091,25 +1091,7 @@ function FeatureDetailPanel({
           </div>
         )}
 
-        {/* Preview button at review */}
-        {feature.status === 'review' && (
-          feature.vercel_preview_url ? (
-            <a
-              href={feature.vercel_preview_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-[11px] font-medium bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-600/30 transition-colors"
-            >
-              <Globe className="h-3.5 w-3.5" />
-              Open Preview
-              <ExternalLink className="h-3 w-3" />
-            </a>
-          ) : (
-            <div className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-[11px] font-medium bg-white/[0.03] border border-white/10 text-white/40">
-              ⏳ Preview link pending...
-            </div>
-          )
-        )}
+        {/* Preview link only shown inside Review tab (StepPanelContent) */}
 
         {/* Tabs — only Details and Audit Trail */}
         <div className="flex gap-1 mt-2">

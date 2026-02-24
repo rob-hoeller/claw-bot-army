@@ -89,7 +89,7 @@ export function PhaseChatMessages({ messages, agents, loading }: PhaseChatMessag
   return (
     <div className="max-h-[320px] overflow-y-auto space-y-2 py-3 px-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
       {messages.map((msg) => {
-        const isUser = msg.author_type === "user"
+        const isUser = msg.author_type === "human"
         const agent = agents.find((a) => a.id === msg.author_id)
         const emoji = agent?.emoji || senderEmojiMap[msg.author_type] || "🤖"
 
