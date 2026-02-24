@@ -388,14 +388,6 @@ function SortableFeatureCard({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: feature.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
-  const priority = priorityConfig[feature.priority]
-  const assignedAgent = agents.find(a => a.id === feature.assigned_to)
-  const requestedAgent = agents.find(a => a.id === feature.requested_by)
-  const [startingPipeline, setStartingPipeline] = useState(false)
-
-  // Stuck detection: >30min idle
-  const elapsedMs = Date.now() - new Date(feature.updated_at).getTime()
-  const isStuck = elapsedMs > 30 * 60 * 1000 && feature.status !== 'done' && feature.status !== 'cancelled'
 
   return (
     <motion.div
@@ -420,26 +412,20 @@ function SortableFeatureCard({
             <Loader2 className="h-3 w-3 animate-spin text-purple-300" />
           </div>
         )}
-        <div className="flex items-start gap-1.5 mb-1">
-          <button {...listeners} className="mt-0.5 opacity-0 group-hover:opacity-40 hover:!opacity-80 cursor-grab active:cursor-grabbing" onClick={(e) => e.stopPropagation()}>
-            <GripVertical className="h-3 w-3 text-white/50" />
-          </button>
-          <Badge className={cn("text-[9px] px-1 py-0 h-4 flex-shrink-0 border", priority.color)}>
-            {priority.label}
-          </Badge>
-          <h4 className="text-xs font-medium text-white/90 leading-tight line-clamp-2 group-hover:text-purple-300 transition-colors flex-1">
+        <div className="mb-1" {...listeners}>
+          <h4 className="text-xs font-medium text-white/90 leading-tight line-clamp-2 group-hover:text-purple-300 transition-colors cursor-grab active:cursor-grabbing">
             {feature.title}
           </h4>
         </div>
 
         {/* Pipeline progress mini */}
-        <div className="pl-[18px] mb-1">
+        <div className="mb-1">
           <PipelineProgress status={feature.status} />
         </div>
 
         {/* Pipeline stage pill + revision badge */}
         {(feature.current_agent || feature.status === ('escalated' as FeatureStatus)) && (
-          <div className="flex items-center gap-1.5 pl-[18px] mb-1">
+          <div className="flex items-center gap-1.5 mb-1">
             <PipelineStagePill
               agent={feature.current_agent}
               status={feature.status}
@@ -451,7 +437,7 @@ function SortableFeatureCard({
 
         {/* Cost badges */}
         {(feature.estimated_cost != null || feature.actual_cost != null) && (
-          <div className="flex items-center gap-1 pl-[18px] mb-1">
+          <div className="flex items-center gap-1 mb-1">
             {feature.estimated_cost != null && (
               <span className="text-[9px] text-white/40 bg-white/5 px-1 rounded" title="Estimated cost">
                 ~${feature.estimated_cost.toFixed(2)}
@@ -464,49 +450,6 @@ function SortableFeatureCard({
             )}
           </div>
         )}
-
-        <div className="flex items-center justify-between pl-[18px]">
-          <div className="flex items-center gap-1">
-            {requestedAgent && <span className="text-[10px]" title={requestedAgent.name}>{requestedAgent.emoji}</span>}
-            {requestedAgent && assignedAgent && <ArrowRight className="h-2 w-2 text-white/20" />}
-            {assignedAgent && <span className="text-[10px]" title={assignedAgent.name}>{assignedAgent.emoji}</span>}
-          </div>
-          <div className="flex items-center gap-1.5">
-            {feature.status === 'planning' && (
-              <button
-                title="Start Pipeline"
-                onClick={async (e) => {
-                  e.stopPropagation()
-                  if (startingPipeline) return
-                  setStartingPipeline(true)
-                  try {
-                    const res = await fetch(`/api/features/${feature.id}/start-pipeline`, { method: 'POST' })
-                    if (!res.ok) {
-                      const body = await res.json().catch(() => null)
-                      console.error('Start pipeline failed:', body?.error)
-                    }
-                  } catch {
-                    // handled by realtime update
-                  } finally {
-                    setStartingPipeline(false)
-                  }
-                }}
-                disabled={startingPipeline || isUpdating}
-                className="p-0.5 rounded hover:bg-purple-500/20 transition-colors disabled:opacity-50"
-              >
-                {startingPipeline
-                  ? <Loader2 className="h-3.5 w-3.5 text-purple-400 animate-spin" />
-                  : <Rocket className="h-3.5 w-3.5 text-purple-400 hover:text-purple-300" />}
-              </button>
-            )}
-            {feature.vercel_preview_url && <span title="Vercel Preview"><Globe className="h-3 w-3 text-cyan-400" /></span>}
-            {feature.pr_url && <GitPullRequest className={cn("h-3 w-3", feature.pr_status === 'merged' ? 'text-green-400' : 'text-purple-400')} />}
-            {isStuck && (
-              <span title="Stuck >30min" className="text-[9px] text-amber-500">⚠️</span>
-            )}
-            <StatusDropdown currentStatus={feature.status} onStatusChange={onStatusChange} disabled={isUpdating} />
-          </div>
-        </div>
       </div>
     </motion.div>
   )
@@ -514,13 +457,9 @@ function SortableFeatureCard({
 
 // ─── Plain Card (for drag overlay) ──────────────────────────────
 function FeatureCardPlain({ feature }: { feature: Feature }) {
-  const priority = priorityConfig[feature.priority]
   return (
     <div className="p-2 rounded-md bg-white/[0.06] border border-purple-400/40 shadow-lg shadow-purple-500/10 w-[200px]">
-      <div className="flex items-start gap-1.5">
-        <Badge className={cn("text-[9px] px-1 py-0 h-4 flex-shrink-0 border", priority.color)}>{priority.label}</Badge>
-        <h4 className="text-xs font-medium text-white/90 leading-tight line-clamp-2">{feature.title}</h4>
-      </div>
+      <h4 className="text-xs font-medium text-white/90 leading-tight line-clamp-2">{feature.title}</h4>
     </div>
   )
 }
