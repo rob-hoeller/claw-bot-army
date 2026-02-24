@@ -922,8 +922,10 @@ function FeatureDetailPanel({
   const [streamingContent, setStreamingContent] = useState("")
   const [activeTab, setActiveTab] = useState<'details' | 'chat' | 'specs'>('details')
   const [showReassign, setShowReassign] = useState(false)
+  const [startingPipeline, setStartingPipeline] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
+  const isUpdating = false
   const priority = priorityConfig[feature.priority]
   const assignedAgent = agents.find(a => a.id === feature.assigned_to)
   const requestedAgent = agents.find(a => a.id === feature.requested_by)
@@ -1147,6 +1149,31 @@ function FeatureDetailPanel({
               </div>
             </div>
 
+            {feature.status === 'planning' && (
+              <button
+                onClick={async () => {
+                  if (startingPipeline) return
+                  setStartingPipeline(true)
+                  try {
+                    const res = await fetch(`/api/features/${feature.id}/start-pipeline`, { method: 'POST' })
+                    if (!res.ok) {
+                      const body = await res.json().catch(() => null)
+                      console.error('Start pipeline failed:', body?.error)
+                    }
+                  } catch {
+                    // handled by realtime update
+                  } finally {
+                    setStartingPipeline(false)
+                  }
+                }}
+                disabled={startingPipeline || isUpdating}
+                className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-medium rounded-md bg-purple-600/20 border border-purple-500/30 text-purple-300 hover:bg-purple-600/30 transition-colors disabled:opacity-50"
+              >
+                {startingPipeline
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Starting Pipeline...</>
+                  : <><Rocket className="h-3.5 w-3.5" />Start Pipeline</>}
+              </button>
+            )}
             {feature.status !== 'cancelled' && feature.status !== 'done' && (
               <button onClick={() => { if (window.confirm('Cancel this feature?')) onStatusChange('cancelled') }}
                 className="mt-2 flex items-center gap-1 text-[10px] text-red-400/60 hover:text-red-400 transition-colors">
