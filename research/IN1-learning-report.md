@@ -1,0 +1,78 @@
+# IN1 Learning Report — Product Architecture for AI Agent Systems
+**Date:** 2026-02-24  
+**Agent:** IN1 (Product Architect)  
+**Focus:** Feature specification & requirements engineering for AI-driven platforms
+
+---
+
+## 1. Key Insights
+
+- **Simple, composable patterns beat complex frameworks.** Anthropic's guidance on building effective agents emphasizes starting with the simplest solution — single LLM calls with retrieval — and only adding agentic complexity (workflows → agents) when the task demands it. Implication for specs: each feature should declare its *agentic complexity level* (static prompt, workflow, or autonomous agent) so engineers don't over-architect.
+
+- **Evals are the new acceptance criteria.** Eugene Yan's "Patterns for Building LLM-based Systems" identifies evals as the #1 differentiator between teams shipping quality vs. "hot garbage." For AI features, traditional pass/fail acceptance criteria aren't sufficient — you need eval datasets with expected outputs, scoring rubrics, and regression thresholds baked into the spec itself.
+
+- **Guardrails and Defensive UX belong in the spec, not as afterthoughts.** Both Yan and Humanloop stress that output quality guardrails (format validation, toxicity filters, hallucination checks) and graceful error handling must be first-class concerns. Product specs should include a "Guardrails" section alongside functional requirements.
+
+- **Workflows vs. Agents is a critical architectural decision that PMs must own.** Anthropic distinguishes *workflows* (predefined code paths orchestrating LLMs) from *agents* (LLM-directed, dynamic). This distinction shapes cost, latency, predictability, and testability. The product architect should explicitly classify each feature as one or the other in the spec.
+
+- **Feedback loops are a product feature, not a metric.** Collecting user feedback to build a data flywheel (thumbs up/down, corrections, preference signals) should be specced as a first-class UI component for every AI-powered feature, enabling continuous improvement without redeployment.
+
+---
+
+## 2. Useful Sources
+
+| Source | URL | Key Takeaway |
+|--------|-----|--------------|
+| Anthropic — "Building Effective Agents" | anthropic.com/engineering/building-effective-agents | Workflows vs. agents taxonomy; start simple |
+| Eugene Yan — "Patterns for Building LLM-based Systems" | eugeneyan.com/writing/llm-patterns/ | 7 patterns (evals, RAG, guardrails, defensive UX, feedback) |
+| Humanloop — "Evaluating LLM Applications" | humanloop.com/blog/evaluating-llm-apps | Eval methodology for production LLM apps |
+| Lenny's Newsletter — AI Product Management series | lennysnewsletter.com | Building AI product sense; non-technical Cursor workflows |
+
+---
+
+## 3. Recommendations for HBx
+
+### Recommendation A: Structured Spec Template with AI-Native Sections (1 sprint)
+
+**Problem:** Our current feature specs don't account for the unique concerns of AI agent features — eval criteria, guardrail definitions, complexity classification, or feedback mechanisms.
+
+**Proposal:** Create an `AI Feature Spec Template` that every agent-related ticket must use. It adds these sections to our existing format:
+
+```markdown
+## AI Classification
+- Type: [ ] Static Prompt  [ ] Workflow  [ ] Autonomous Agent
+- Eval Strategy: (how do we measure this works?)
+
+## Eval Dataset
+- [ ] N sample inputs with expected outputs attached
+- Pass threshold: ___% on scoring rubric
+- Regression gate: must not degrade existing evals by >___% 
+
+## Guardrails
+- Output format validation: ...
+- Content safety checks: ...
+- Fallback behavior on failure: ...
+
+## Feedback Loop
+- User signal captured: (thumbs, correction, none)
+- Data stored to: (eval dataset / training set / neither)
+```
+
+**Effort:** ~3-5 days to design template, socialize with team, integrate into ticket workflow.
+
+### Recommendation B: Per-Agent Eval Suites as Living Spec Artifacts (2 sprints)
+
+**Problem:** We have no systematic way to verify that our agents (e.g., Schellie SL1) meet acceptance criteria after prompt or model changes. Manual QA is slow and inconsistent.
+
+**Proposal:** For each deployed agent, maintain a **living eval suite** — a versioned set of test conversations with scored expected behaviors — stored alongside the agent config in `/agents/{id}/evals/`. The eval suite *is* the acceptance criteria. On every agent change (prompt edit, model swap, knowledge update), the eval suite runs automatically and gates deployment.
+
+Components:
+1. **Eval dataset format**: JSONL with `input`, `expected_behavior`, `scoring_rubric` fields
+2. **Runner script**: Executes eval suite against agent endpoint, produces pass/fail + scores
+3. **CI gate**: Agent config changes trigger eval run; deploy blocked if score drops below threshold
+
+**Effort:** ~8-10 days. Sprint 1: format + runner for one agent (Schellie). Sprint 2: generalize to all agents + CI integration.
+
+---
+
+*Report generated by IN1 as part of HBx Education Night, 2026-02-24.*

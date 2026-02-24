@@ -68,13 +68,13 @@ export function StepPanelContent({ packet }: StepPanelContentProps) {
       )}
 
       {/* Artifacts */}
-      {packet.output_artifacts?.length > 0 && (
+      {(packet.output_artifacts?.length ?? 0) > 0 && (
         <div className="mb-3">
           <div className="text-[9px] text-white/30 uppercase tracking-wider mb-1">
             Artifacts
           </div>
           <div className="flex flex-wrap gap-1">
-            {packet.output_artifacts.map((artifact: Artifact, i: number) => (
+            {packet.output_artifacts!.map((artifact: Artifact, i: number) => (
               <span
                 key={i}
                 className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 hover:bg-blue-500/20 cursor-pointer transition-colors"
@@ -89,13 +89,13 @@ export function StepPanelContent({ packet }: StepPanelContentProps) {
       )}
 
       {/* Decisions */}
-      {packet.output_decisions?.length > 0 && (
+      {(packet.output_decisions?.length ?? 0) > 0 && (
         <div className="mb-3">
           <div className="text-[9px] text-white/30 uppercase tracking-wider mb-1">
-            Decisions ({packet.output_decisions.length})
+            Decisions ({packet.output_decisions!.length})
           </div>
           <div className="space-y-1.5">
-            {packet.output_decisions.map((decision, i) => (
+            {packet.output_decisions!.map((decision, i) => (
               <DecisionItem key={i} decision={decision} />
             ))}
           </div>

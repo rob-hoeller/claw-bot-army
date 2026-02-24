@@ -72,6 +72,7 @@ import { StepPanelContent } from "./audit-trail/StepPanelContent"
 import type { HandoffPacket } from "./audit-trail/types"
 import { useHandoffPackets } from "@/hooks/useHandoffPackets"
 import { ClipboardList } from "lucide-react"
+import { PhaseChatPanel } from "./audit-trail/PhaseChatPanel"
 
 // ─── Types ───────────────────────────────────────────────────────
 type FeatureStatus =
