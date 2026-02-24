@@ -126,7 +126,7 @@ export function StepPanelContent({
   const showAcceptanceCriteria = phase === "planning" && acceptanceCriteria
   const showPreviewLink = phase === "review" && vercelPreviewUrl
   const showPrLink = (phase === "approved" || phase === "pr_submitted" || phase === "done") && prUrl
-  const showApproval = (phase === "review" || phase === "approved" || phase === "done") && approvedBy
+  const showApproval = (phase === "approved" || phase === "pr_submitted" || phase === "done") && approvedBy
 
   return (
     <div className="pt-1 space-y-3">

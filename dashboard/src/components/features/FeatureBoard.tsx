@@ -1086,7 +1086,7 @@ function FeatureDetailPanel({
               <ApproveButton feature={feature} targetStatus="review" label="QA Pass → Review" onApprove={onStatusChange} onError={onError} />
             )}
             {feature.status === 'review' && (
-              <ApproveButton feature={feature} targetStatus="approved" label="Approve → Ready" onApprove={onStatusChange} onError={onError} />
+              <ApproveButton feature={feature} targetStatus="approved" label="Approve" onApprove={onStatusChange} onError={onError} />
             )}
           </div>
         )}
@@ -1148,10 +1148,29 @@ function FeatureDetailPanel({
         </div>
       ) : activeTab === 'details' ? (
         <div className="flex-1 overflow-y-auto">
-          {feature.description && (
-            <div className="p-3 border-b border-white/5"><p className="text-xs text-white/70">{feature.description}</p></div>
-          )}
+          {/* ── Section 1: Overview ── */}
           <div className="p-3 border-b border-white/5 space-y-2">
+            <div className="text-[10px] text-white/40 uppercase tracking-wider flex items-center gap-1.5">
+              <FileText className="h-3 w-3" />Overview
+            </div>
+            {feature.description && (
+              <p className="text-xs text-white/70 leading-relaxed">{feature.description}</p>
+            )}
+            {!feature.description && (
+              <p className="text-[11px] text-white/30 italic">No description provided</p>
+            )}
+            {feature.labels && feature.labels.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {feature.labels.map((label) => (<span key={label} className="px-1.5 py-0.5 text-[9px] rounded bg-white/5 text-white/50">{label}</span>))}
+              </div>
+            )}
+          </div>
+
+          {/* ── Section 2: Progress & Assignment ── */}
+          <div className="p-3 border-b border-white/5 space-y-2">
+            <div className="text-[10px] text-white/40 uppercase tracking-wider flex items-center gap-1.5">
+              <ArrowRight className="h-3 w-3" />Progress
+            </div>
             <div className="grid grid-cols-2 gap-2 text-[11px]">
               <div className="flex items-center gap-1.5">
                 <User className="h-3 w-3 text-white/30" /><span className="text-white/50">Requested:</span>
@@ -1180,6 +1199,18 @@ function FeatureDetailPanel({
                 <Calendar className="h-3 w-3 text-white/30" /><span className="text-white/50">Created:</span><span className="text-white/80">{new Date(feature.created_at).toLocaleDateString()}</span>
               </div>
             </div>
+            {/* Current phase indicator */}
+            {feature.current_agent && (
+              <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-purple-500/5 border border-purple-500/10">
+                <Zap className="h-3 w-3 text-purple-400" />
+                <span className="text-[10px] text-purple-300">Currently with <strong>{feature.current_agent}</strong></span>
+                {feature.revision_count > 0 && (
+                  <span className="text-[9px] bg-orange-500/10 text-orange-300 px-1.5 py-0.5 rounded ml-auto">
+                    {feature.revision_count} revision{feature.revision_count !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+            )}
 
             {feature.status === 'planning' && (
               <button
@@ -1199,28 +1230,80 @@ function FeatureDetailPanel({
                   }
                 }}
                 disabled={startingPipeline || isUpdating}
-                className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-medium rounded-md bg-purple-600/20 border border-purple-500/30 text-purple-300 hover:bg-purple-600/30 transition-colors disabled:opacity-50"
+                className="mt-1 w-full flex items-center justify-center gap-2 px-3 py-2 text-[11px] font-medium rounded-md bg-purple-600/20 border border-purple-500/30 text-purple-300 hover:bg-purple-600/30 transition-colors disabled:opacity-50"
               >
                 {startingPipeline
                   ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Starting Pipeline...</>
                   : <><Rocket className="h-3.5 w-3.5" />Start Pipeline</>}
               </button>
             )}
-            {feature.status !== 'cancelled' && feature.status !== 'done' && (
-              <button onClick={() => { if (window.confirm('Cancel this feature?')) onStatusChange('cancelled') }}
-                className="mt-2 flex items-center gap-1 text-[10px] text-red-400/60 hover:text-red-400 transition-colors">
-                <X className="h-3 w-3" />Cancel Feature
-              </button>
-            )}
-            {feature.labels && feature.labels.length > 0 && (
-              <div className="flex flex-wrap gap-1">
-                {feature.labels.map((label) => (<span key={label} className="px-1.5 py-0.5 text-[9px] rounded bg-white/5 text-white/50">{label}</span>))}
+          </div>
+
+          {/* ── Section 3: Specification ── */}
+          {(feature.acceptance_criteria || feature.feature_spec) && (
+            <div className="p-3 border-b border-white/5 space-y-2">
+              <div className="text-[10px] text-white/40 uppercase tracking-wider flex items-center gap-1.5">
+                <ClipboardList className="h-3 w-3" />Specification
+              </div>
+              {feature.acceptance_criteria && (
+                <div>
+                  <div className="text-[9px] text-white/30 mb-1">Acceptance Criteria</div>
+                  <pre className="text-[10px] text-white/60 whitespace-pre-wrap font-mono bg-white/[0.02] rounded p-2 border border-white/5 max-h-32 overflow-y-auto">
+                    {feature.acceptance_criteria}
+                  </pre>
+                </div>
+              )}
+              {feature.feature_spec && (
+                <div>
+                  <div className="text-[9px] text-white/30 mb-1">Feature Spec</div>
+                  <pre className="text-[10px] text-white/60 whitespace-pre-wrap font-mono bg-white/[0.02] rounded p-2 border border-white/5 max-h-40 overflow-y-auto">
+                    {feature.feature_spec.length > 500 ? feature.feature_spec.slice(0, 500) + '…' : feature.feature_spec}
+                  </pre>
+                </div>
+              )}
+              {feature.design_spec && (
+                <div>
+                  <div className="text-[9px] text-white/30 mb-1">Design Spec</div>
+                  <pre className="text-[10px] text-white/60 whitespace-pre-wrap font-mono bg-white/[0.02] rounded p-2 border border-white/5 max-h-40 overflow-y-auto">
+                    {feature.design_spec.length > 500 ? feature.design_spec.slice(0, 500) + '…' : feature.design_spec}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Section 4: Technical / Cost ── */}
+          <div className="p-3 border-b border-white/5 space-y-2">
+            <div className="text-[10px] text-white/40 uppercase tracking-wider flex items-center gap-1.5">
+              <DollarSign className="h-3 w-3" />Technical & Cost
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[9px] text-white/30">Estimated Cost</label>
+                <div className="text-[11px] text-white/70">
+                  {feature.estimated_cost != null ? `$${feature.estimated_cost.toFixed(2)}` : '—'}
+                </div>
+              </div>
+              <div>
+                <label className="text-[9px] text-white/30">Actual Cost</label>
+                <div className="text-[11px] text-white/70">
+                  {feature.actual_cost != null ? `$${feature.actual_cost.toFixed(2)}` : '—'}
+                </div>
+              </div>
+            </div>
+            {feature.cost_notes && (
+              <div>
+                <label className="text-[9px] text-white/30">Notes</label>
+                <p className="text-[10px] text-white/50 italic">{feature.cost_notes}</p>
               </div>
             )}
           </div>
 
+          {/* ── Section 5: Context & Links ── */}
           <div className="p-3 border-b border-white/5 space-y-1.5">
-            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Links</div>
+            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+              <Link2 className="h-3 w-3" />Context & Links
+            </div>
             {feature.vercel_preview_url && (
               <a href={feature.vercel_preview_url} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-2 text-[11px] text-cyan-400 hover:text-cyan-300">
@@ -1252,32 +1335,15 @@ function FeatureDetailPanel({
             </div>
           )}
 
-          {/* Cost Tracking */}
-          <div className="p-3 border-b border-white/5 space-y-2">
-            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1 flex items-center gap-1">
-              <DollarSign className="h-3 w-3" />Cost Tracking
+          {/* ── Section 6: Actions ── */}
+          {feature.status !== 'cancelled' && feature.status !== 'done' && (
+            <div className="p-3 border-b border-white/5">
+              <button onClick={() => { if (window.confirm('Cancel this feature?')) onStatusChange('cancelled') }}
+                className="flex items-center gap-1 text-[10px] text-red-400/60 hover:text-red-400 transition-colors">
+                <Ban className="h-3 w-3" />Cancel Feature
+              </button>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="text-[9px] text-white/30">Estimated Cost</label>
-                <div className="text-[11px] text-white/70">
-                  {feature.estimated_cost != null ? `$${feature.estimated_cost.toFixed(2)}` : '—'}
-                </div>
-              </div>
-              <div>
-                <label className="text-[9px] text-white/30">Actual Cost</label>
-                <div className="text-[11px] text-white/70">
-                  {feature.actual_cost != null ? `$${feature.actual_cost.toFixed(2)}` : '—'}
-                </div>
-              </div>
-            </div>
-            {feature.cost_notes && (
-              <div>
-                <label className="text-[9px] text-white/30">Notes</label>
-                <p className="text-[10px] text-white/50 italic">{feature.cost_notes}</p>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       ) : activeTab === 'audit' ? (
         <AuditTrailTab
