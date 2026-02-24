@@ -4,13 +4,14 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { supabase } from "@/lib/supabase"
 
 import type { PhaseChatMessage } from "@/components/features/audit-trail/types"
+import type { Attachment } from "@/components/chat/types"
 export type { PhaseChatMessage }
 
 interface UsePhaseChatMessagesReturn {
   messages: PhaseChatMessage[]
   loading: boolean
   error: string | null
-  sendMessage: (content: string, mentions?: string[]) => Promise<void>
+  sendMessage: (content: string, mentions?: string[], attachments?: Attachment[]) => Promise<void>
 }
 
 export function usePhaseChatMessages(
@@ -85,17 +86,18 @@ export function usePhaseChatMessages(
   }, [featureId, phase])
 
   const sendMessage = useCallback(
-    async (content: string, mentions: string[] = []) => {
+    async (content: string, mentions: string[] = [], attachments: Attachment[] = []) => {
       const optimisticId = `opt-${Date.now()}`
       const optimistic: PhaseChatMessage = {
         id: optimisticId,
         feature_id: featureId,
         phase,
-        sender_type: "user",
-        sender_id: "Lance",
-        sender_name: "Lance",
+        author_type: "user",
+        author_id: "lance",
+        author_name: "Lance Manlove",
         content,
         mentions,
+        attachments,
         created_at: new Date().toISOString(),
       }
 
@@ -109,10 +111,11 @@ export function usePhaseChatMessages(
           body: JSON.stringify({
             phase,
             content,
-            sender_type: "user",
-            sender_id: "Lance",
-            sender_name: "Lance",
+            author_type: "user",
+            author_id: "lance",
+            author_name: "Lance Manlove",
             mentions,
+            attachments,
           }),
         })
 

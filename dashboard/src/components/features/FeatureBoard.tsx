@@ -1092,17 +1092,23 @@ function FeatureDetailPanel({
         )}
 
         {/* Preview button at review */}
-        {feature.status === 'review' && feature.vercel_preview_url && (
-          <a
-            href={feature.vercel_preview_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-[11px] font-medium bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-600/30 transition-colors"
-          >
-            <Globe className="h-3.5 w-3.5" />
-            Open Preview
-            <ExternalLink className="h-3 w-3" />
-          </a>
+        {feature.status === 'review' && (
+          feature.vercel_preview_url ? (
+            <a
+              href={feature.vercel_preview_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-[11px] font-medium bg-cyan-600/20 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-600/30 transition-colors"
+            >
+              <Globe className="h-3.5 w-3.5" />
+              Open Preview
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          ) : (
+            <div className="mt-2 w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-[11px] font-medium bg-white/[0.03] border border-white/10 text-white/40">
+              ⏳ Preview link pending...
+            </div>
+          )
         )}
 
         {/* Tabs — only Details and Audit Trail */}
@@ -1175,9 +1181,10 @@ function FeatureDetailPanel({
               <div className="flex items-center gap-1.5">
                 <User className="h-3 w-3 text-white/30" /><span className="text-white/50">Requested:</span>
                 <span className="text-white/80">{
-                  feature.requested_by === 'HBx' || feature.requested_by === 'lance' ? 'Lance' :
-                  feature.requested_by === 'rob-hoeller' ? 'Rob H' :
-                  feature.requested_by === 'RobLepard' ? 'Rob L' :
+                  feature.requested_by === 'HBx' ? 'HBx' :
+                  feature.requested_by === 'lance' || feature.requested_by === 'Lance' ? 'Lance Manlove' :
+                  feature.requested_by === 'rob-hoeller' ? 'Rob Hoeller' :
+                  feature.requested_by === 'RobLepard' ? 'Rob Lepard' :
                   feature.requested_by || '—'
                 }</span>
               </div>
@@ -1291,12 +1298,16 @@ function FeatureDetailPanel({
             <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1 flex items-center gap-1.5">
               <Link2 className="h-3 w-3" />Context & Links
             </div>
-            {feature.vercel_preview_url && (
+            {feature.vercel_preview_url ? (
               <a href={feature.vercel_preview_url} target="_blank" rel="noopener noreferrer"
                 className="flex items-center gap-2 text-[11px] text-cyan-400 hover:text-cyan-300">
                 <Globe className="h-3 w-3" /><span>Vercel Preview</span><ExternalLink className="h-2.5 w-2.5" />
               </a>
-            )}
+            ) : feature.status === 'review' ? (
+              <span className="flex items-center gap-2 text-[11px] text-white/40">
+                <Globe className="h-3 w-3" />⏳ Preview link pending...
+              </span>
+            ) : null}
             {feature.branch_name && (
               <div className="flex items-center gap-2 text-[11px]">
                 <Link2 className="h-3 w-3 text-white/30" /><span className="text-white/50">Branch:</span>
