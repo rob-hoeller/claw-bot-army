@@ -67,6 +67,9 @@ import { RevisionBadge } from "./RevisionBadge"
 import { PipelineLog, type PipelineLogEntry } from "./PipelineLog"
 import { ChatInput } from "@/components/chat/ChatInput"
 import type { Attachment } from "@/components/chat/types"
+import { AuditTrailTab } from "./audit-trail"
+import { useHandoffPackets } from "@/hooks/useHandoffPackets"
+import { ClipboardList } from "lucide-react"
 
 // ─── Types ───────────────────────────────────────────────────────
 type FeatureStatus =
@@ -920,10 +923,11 @@ function FeatureDetailPanel({
   const [sending, setSending] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
-  const [activeTab, setActiveTab] = useState<'details' | 'chat' | 'specs'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'chat' | 'specs' | 'audit'>('details')
   const [showReassign, setShowReassign] = useState(false)
   const [startingPipeline, setStartingPipeline] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const { packets: handoffPackets, loading: handoffLoading } = useHandoffPackets(feature.id, activeTab === 'audit')
 
   const isUpdating = false
   const priority = priorityConfig[feature.priority]
@@ -1110,6 +1114,9 @@ function FeatureDetailPanel({
           <button onClick={() => setActiveTab('chat')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'chat' ? "bg-purple-500/20 text-purple-300" : "text-white/40 hover:text-white/60")}>
             <MessageSquare className="h-3 w-3 inline mr-1" />Chat {messages.length > 0 && `(${messages.length})`}
           </button>
+          <button onClick={() => setActiveTab('audit')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'audit' ? "bg-emerald-500/20 text-emerald-300" : "text-white/40 hover:text-white/60")}>
+            <ClipboardList className="h-3 w-3 inline mr-1" />Audit Trail
+          </button>
         </div>
       </div>
 
@@ -1277,6 +1284,14 @@ function FeatureDetailPanel({
           </div>
         </div>
       ) : (
+        activeTab === 'audit' ? (
+        <AuditTrailTab
+          featureId={feature.id}
+          featureStatus={feature.status}
+          packets={handoffPackets}
+          loading={handoffLoading}
+        />
+      ) : (
         /* Chat Tab */
         <div className="flex-1 overflow-y-auto p-3">
           {loadingMessages ? (
@@ -1323,7 +1338,7 @@ function FeatureDetailPanel({
             </div>
           )}
         </div>
-      )}
+      ))}
 
       {/* Chat Input */}
       <div className="flex-shrink-0 p-3 border-t border-white/10">
