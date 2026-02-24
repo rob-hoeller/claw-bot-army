@@ -2,7 +2,7 @@
 
 > This file stores platform state, agent registry, and significant events.
 > Agent registry is **dynamically generated** from Supabase (single source of truth).
-> Last synced: 2026-02-24T22:56:21Z
+> Last synced: 2026-02-24T23:26:18Z
 
 ---
 
@@ -22,13 +22,16 @@
 | HBx_SL1 | Schellie | a569a0b7-4d7a-4d6f-b235-25a70f9454fa | Digital Online Sales Counselor | 🔄 Deploying | — |
 | HBx_SL2 | Competitive Intel | a569a0b7-4d7a-4d6f-b235-25a70f9454fa | Market Intelligence Agent | 🔄 Deploying | — |
 | HBx_SP1 | Bug Triage | 35eb92a0-f986-4c4f-a358-6aedab7e4991 | Bug Triage & Platform Maintenance | ✅ Active | — |
+| lance | Lance Manlove | — | Platform Admin | ✅ Active | — |
+| rob-hoeller | Rob Hoeller | — | Technical Lead | ✅ Active | — |
+| rob-lepard | Rob Lepard | — | Developer | ✅ Active | — |
 
 ### Agent Health Summary
 
 | Metric | Value |
 |--------|-------|
-| Total Agents | 10 |
-| Active | 8 |
+| Total Agents | 13 |
+| Active | 11 |
 | Deploying | 2 |
 | Inactive | 0 |
 | Issues | 0 |
