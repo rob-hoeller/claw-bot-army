@@ -65,6 +65,8 @@ import { PipelineActivityFeed } from "./PipelineActivityFeed"
 import { PipelineStagePill } from "./PipelineStagePill"
 import { RevisionBadge } from "./RevisionBadge"
 import { PipelineLog, type PipelineLogEntry } from "./PipelineLog"
+import { ChatInput } from "@/components/chat/ChatInput"
+import type { Attachment } from "@/components/chat/types"
 
 // ─── Types ───────────────────────────────────────────────────────
 type FeatureStatus =
@@ -475,7 +477,6 @@ function CreateFeaturePanel({
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([
     { role: 'assistant', content: "👋 I'm **IN1** — your Product Architect. Let's plan this feature together.\n\nWhat problem are you looking to solve?" },
   ])
-  const [chatInput, setChatInput] = useState("")
   const [chatting, setChatting] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
@@ -489,10 +490,9 @@ function CreateFeaturePanel({
 
   const assistantMessageCount = chatMessages.filter(m => m.role === 'assistant').length
 
-  const handleChatSend = async () => {
-    if (!chatInput.trim() || chatting || isStreaming) return
-    const msg = chatInput.trim()
-    setChatInput("")
+  const handleChatSend = async (content: string, attachments: Attachment[]) => {
+    if (!content.trim() || chatting || isStreaming) return
+    const msg = content.trim()
     const updatedMessages = [...chatMessages, { role: 'user' as const, content: msg }]
     setChatMessages(updatedMessages)
     setChatting(true)
@@ -502,7 +502,7 @@ function CreateFeaturePanel({
       const res = await fetch('/api/features/plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updatedMessages }),
+        body: JSON.stringify({ messages: updatedMessages, attachments }),
         signal: abortControllerRef.current.signal,
       })
 
@@ -725,23 +725,11 @@ function CreateFeaturePanel({
             </div>
           )}
           {/* Chat input */}
-          <div className="flex-shrink-0 p-3 border-t border-white/10">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Describe your feature idea..."
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChatSend()}
-                disabled={chatting || isStreaming}
-                className="flex-1 h-8 text-xs bg-white/5 border-white/10"
-                autoFocus
-              />
-              <Button size="sm" onClick={handleChatSend} disabled={!chatInput.trim() || chatting || isStreaming} className="h-8 w-8 p-0">
-                {chatting || isStreaming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-              </Button>
-            </div>
-            <p className="text-[9px] text-white/20 mt-1">Plan with IN1, then create directly.</p>
-          </div>
+          <ChatInput
+            onSend={handleChatSend}
+            disabled={chatting || isStreaming}
+            placeholder="Describe your feature idea..."
+          />
       </>
     </motion.div>
   )
