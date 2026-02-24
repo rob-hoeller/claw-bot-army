@@ -27,6 +27,27 @@ export async function POST(req: NextRequest) {
       .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
       .join('\n')
 
+    const TITLE_SYSTEM_PROMPT = "You are a title generator. Given a feature planning conversation, output exactly one short title (3-8 words). Rules: NO quotes, NO punctuation at the end, NO explanation, NO preamble. Just the title words. Example input: \"User wants to add dark mode\" → Example output: Automatic Dark Mode Detection"
+
+    // Post-process LLM title output to strip common artifacts
+    function cleanTitle(raw: string): string {
+      let t = raw.trim()
+      // Strip leading/trailing quotes
+      t = t.replace(/^["']+|["']+$/g, '')
+      // Strip leading prefixes like "Title: " or "Feature: "
+      t = t.replace(/^(Title|Feature):\s*/i, '')
+      // Strip trailing periods
+      t = t.replace(/\.+$/, '')
+      t = t.trim()
+      // Truncate at last word boundary under 60 chars
+      if (t.length > 60) {
+        const truncated = t.slice(0, 60)
+        const lastSpace = truncated.lastIndexOf(' ')
+        t = lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated
+      }
+      return t
+    }
+
     if (useAnthropic) {
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -38,7 +59,7 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 60,
-          system: "Generate a concise feature title (3-8 words) from this planning conversation. Return ONLY the title, no quotes, no explanation.",
+          system: TITLE_SYSTEM_PROMPT,
           messages: [{ role: "user", content: conversationText }],
         }),
       })
@@ -46,7 +67,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "LLM request failed" }, { status: 502 })
       }
       const data = await res.json()
-      const title = data.content?.[0]?.text?.trim() || ""
+      const title = cleanTitle(data.content?.[0]?.text || "")
       return NextResponse.json({ title })
     }
 
@@ -64,7 +85,7 @@ export async function POST(req: NextRequest) {
         messages: [
           {
             role: "system",
-            content: "Generate a concise feature title (3-8 words) from this planning conversation. Return ONLY the title, no quotes, no explanation.",
+            content: TITLE_SYSTEM_PROMPT,
           },
           { role: "user", content: conversationText },
         ],
@@ -76,7 +97,7 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json()
-    const title = data.choices?.[0]?.message?.content?.trim() || ""
+    const title = cleanTitle(data.choices?.[0]?.message?.content || "")
     return NextResponse.json({ title })
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error"
