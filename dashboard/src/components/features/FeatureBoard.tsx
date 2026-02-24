@@ -1174,29 +1174,16 @@ function FeatureDetailPanel({
             <div className="grid grid-cols-2 gap-2 text-[11px]">
               <div className="flex items-center gap-1.5">
                 <User className="h-3 w-3 text-white/30" /><span className="text-white/50">Requested:</span>
-                {requestedAgent ? <span className="text-white/80">{requestedAgent.emoji} {requestedAgent.id}</span> : <span className="text-white/40">—</span>}
+                <span className="text-white/80">{
+                  feature.requested_by === 'HBx' || feature.requested_by === 'lance' ? 'Lance' :
+                  feature.requested_by === 'rob-hoeller' ? 'Rob H' :
+                  feature.requested_by === 'RobLepard' ? 'Rob L' :
+                  feature.requested_by || '—'
+                }</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <Bot className="h-3 w-3 text-white/30" /><span className="text-white/50">Assigned:</span>
-                {showReassign ? (
-                  <select className="bg-white/10 text-white/80 text-[10px] rounded px-1 py-0.5 border border-white/10" value={feature.assigned_to || ''}
-                    onChange={(e) => { onReassign(e.target.value || null); setShowReassign(false) }} onBlur={() => setShowReassign(false)} autoFocus>
-                    <option value="">Unassigned</option>
-                    {agents.map(a => (<option key={a.id} value={a.id}>{a.emoji} {a.id} — {a.name}</option>))}
-                  </select>
-                ) : (
-                  <button onClick={() => setShowReassign(true)} className="text-white/80 hover:text-purple-300 transition-colors cursor-pointer" title="Click to reassign">
-                    {assignedAgent ? <>{assignedAgent.emoji} {assignedAgent.id}</> : <span className="text-white/40">Unassigned — click to assign</span>}
-                  </button>
-                )}
-              </div>
-              {feature.approved_by && (
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3 w-3 text-green-400/50" /><span className="text-white/50">Approved:</span><span className="text-white/80">{feature.approved_by}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-1.5">
-                <Calendar className="h-3 w-3 text-white/30" /><span className="text-white/50">Created:</span><span className="text-white/80">{new Date(feature.created_at).toLocaleDateString()}</span>
+                <Calendar className="h-3 w-3 text-white/30" /><span className="text-white/50">Created:</span>
+                <span className="text-white/80">{new Date(feature.created_at).toLocaleString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true })}</span>
               </div>
             </div>
             {/* Current phase indicator */}
