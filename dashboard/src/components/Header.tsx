@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import SyncStatus from "@/components/SyncStatus"
+import { UserSelector } from "@/components/UserSelector"
 
 interface HeaderProps {
   user: User
@@ -60,7 +61,8 @@ export default function Header({ user, onSignOut, onSettingsClick, onMenuClick }
         </div>
 
         {/* Right side */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          <UserSelector />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-9 w-9 rounded-full p-0">

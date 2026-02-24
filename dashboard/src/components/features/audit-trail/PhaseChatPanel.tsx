@@ -1,6 +1,7 @@
 "use client"
 
 import { usePhaseChatMessages } from "@/hooks/usePhaseChatMessages"
+import { useCurrentUser } from "@/hooks/useCurrentUser"
 import { PhaseChatMessages } from "./PhaseChatMessages"
 import { PhaseChatInput } from "./PhaseChatInput"
 
@@ -18,9 +19,10 @@ interface PhaseChatPanelProps {
 
 export function PhaseChatPanel({ featureId, phase, agents }: PhaseChatPanelProps) {
   const { messages, loading, sendMessage } = usePhaseChatMessages(featureId, phase)
+  const { userId, userName } = useCurrentUser()
 
   const handleSend = (content: string, mentions: string[], attachments: import("@/components/chat/types").Attachment[]) => {
-    sendMessage(content, mentions, attachments)
+    sendMessage(content, mentions, attachments, userId ?? "unknown", userName ?? "Unknown")
   }
 
   return (

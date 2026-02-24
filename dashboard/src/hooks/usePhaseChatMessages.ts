@@ -11,7 +11,7 @@ interface UsePhaseChatMessagesReturn {
   messages: PhaseChatMessage[]
   loading: boolean
   error: string | null
-  sendMessage: (content: string, mentions?: string[], attachments?: Attachment[]) => Promise<void>
+  sendMessage: (content: string, mentions?: string[], attachments?: Attachment[], authorId?: string, authorName?: string) => Promise<void>
 }
 
 export function usePhaseChatMessages(
@@ -86,15 +86,15 @@ export function usePhaseChatMessages(
   }, [featureId, phase])
 
   const sendMessage = useCallback(
-    async (content: string, mentions: string[] = [], attachments: Attachment[] = []) => {
+    async (content: string, mentions: string[] = [], attachments: Attachment[] = [], authorId = "unknown", authorName = "Unknown") => {
       const optimisticId = `opt-${Date.now()}`
       const optimistic: PhaseChatMessage = {
         id: optimisticId,
         feature_id: featureId,
         phase,
         author_type: "human",
-        author_id: "lance",
-        author_name: "Lance Manlove",
+        author_id: authorId,
+        author_name: authorName,
         content,
         mentions,
         attachments,
@@ -112,8 +112,8 @@ export function usePhaseChatMessages(
             phase,
             content,
             author_type: "human",
-            author_id: "lance",
-            author_name: "Lance Manlove",
+            author_id: authorId,
+            author_name: authorName,
             mentions,
             attachments,
           }),
