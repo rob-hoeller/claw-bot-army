@@ -15,7 +15,8 @@ export function useHandoffPackets(featureId: string | null, active: boolean) {
       const res = await fetch(`/api/features/${featureId}/handoff-packets`)
       if (!res.ok) throw new Error("Failed to fetch")
       const data = await res.json()
-      setPackets(data)
+      // Handle both array response and { packets: [] } wrapper
+      setPackets(Array.isArray(data) ? data : Array.isArray(data?.packets) ? data.packets : [])
     } catch {
       setPackets([])
     } finally {

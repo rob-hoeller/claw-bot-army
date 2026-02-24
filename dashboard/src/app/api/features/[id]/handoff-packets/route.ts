@@ -42,14 +42,26 @@ export async function GET(
       .from("handoff_packets")
       .select("*")
       .eq("feature_id", id)
-      .order("phase_order", { ascending: true })
+      .order("started_at", { ascending: true })
       .order("version", { ascending: true })
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ packets: data ?? [] })
+    // Sort by pipeline phase order
+    const phaseOrder: Record<string, number> = {
+      planning: 1, design_review: 2, in_progress: 3, qa_review: 4,
+      review: 5, approved: 6, pr_submitted: 7, done: 8,
+    }
+    const sorted = (data ?? []).sort((a: Record<string, unknown>, b: Record<string, unknown>) => {
+      const oa = phaseOrder[a.phase as string] ?? 99
+      const ob = phaseOrder[b.phase as string] ?? 99
+      if (oa !== ob) return oa - ob
+      return ((a.version as number) ?? 0) - ((b.version as number) ?? 0)
+    })
+
+    return NextResponse.json(sorted)
   } catch (err) {
     console.error("[API] Handoff packets GET error:", err)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
