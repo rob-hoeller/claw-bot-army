@@ -151,10 +151,10 @@ const validTransitions: Record<FeatureStatus, FeatureStatus[]> = {
 }
 
 const columns = [
-  { id: 'planning' as FeatureStatus, label: 'Planning', icon: Lightbulb, color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
-  { id: 'design_review' as FeatureStatus, label: 'Design Review', icon: PenTool, color: 'text-blue-400', bgColor: 'bg-blue-500/10' },
-  { id: 'in_progress' as FeatureStatus, label: 'In Progress', icon: PlayCircle, color: 'text-yellow-400', bgColor: 'bg-yellow-500/10' },
-  { id: 'qa_review' as FeatureStatus, label: 'QA Review', icon: TestTube2, color: 'text-orange-400', bgColor: 'bg-orange-500/10' },
+  { id: 'planning' as FeatureStatus, label: 'Plan', icon: Lightbulb, color: 'text-gray-400', bgColor: 'bg-gray-500/10' },
+  { id: 'design_review' as FeatureStatus, label: 'Design', icon: PenTool, color: 'text-blue-400', bgColor: 'bg-blue-500/10' },
+  { id: 'in_progress' as FeatureStatus, label: 'Build', icon: PlayCircle, color: 'text-yellow-400', bgColor: 'bg-yellow-500/10' },
+  { id: 'qa_review' as FeatureStatus, label: 'Test', icon: TestTube2, color: 'text-orange-400', bgColor: 'bg-orange-500/10' },
   { id: 'review' as FeatureStatus, label: 'Review', icon: Eye, color: 'text-purple-400', bgColor: 'bg-purple-500/10' },
   { id: 'approved' as FeatureStatus, label: 'Approved', icon: ThumbsUp, color: 'text-emerald-400', bgColor: 'bg-emerald-500/10' },
   { id: 'pr_submitted' as FeatureStatus, label: 'PR Submitted', icon: GitPullRequest, color: 'text-cyan-400', bgColor: 'bg-cyan-500/10' },
@@ -1382,8 +1382,8 @@ function DroppableColumn({
   const laneBg = colIndex % 2 === 0 ? "bg-[#1a1a2e]/30" : "bg-[#16213e]/30"
 
   return (
-    <div className={cn("flex-shrink-0 w-[170px] rounded-md", laneBg)}>
-      <div className="flex items-center gap-1.5 mb-2 px-1 pt-1">
+    <div className={cn("flex-1 min-w-[140px] rounded-md", laneBg)}>
+      <div className="flex items-center gap-1 mb-2 px-0.5 pt-1">
         <Icon className={cn("h-3 w-3", column.color)} />
         <h3 className="text-[10px] font-medium text-white/60 truncate uppercase tracking-wider">{column.label}</h3>
         <span className="text-[9px] text-white/30 bg-white/5 px-1 rounded">{allColumnFeatures.length}</span>
@@ -1690,7 +1690,7 @@ export function FeatureBoard() {
       {/* Board */}
       <LayoutGroup>
         <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex gap-1.5 overflow-x-auto pb-2">
+          <div className="flex gap-1 overflow-x-auto pb-2">
             {columns.map((column, colIdx) => (
               <DroppableColumn
                 key={column.id}
