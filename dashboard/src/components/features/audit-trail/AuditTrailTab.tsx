@@ -1,22 +1,113 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { AnimatePresence, motion } from "framer-motion"
 import { ClipboardList, Loader2 } from "lucide-react"
-import { StepHeader } from "./StepHeader"
-import { StepPanelContent } from "./StepPanelContent"
 import type { HandoffPacket } from "./types"
 
-const PIPELINE_PHASES = [
-  { phase: "planning", label: "Plan", order: 1 },
-  { phase: "design_review", label: "Design", order: 2 },
-  { phase: "in_progress", label: "Build", order: 3 },
-  { phase: "qa_review", label: "Test", order: 4 },
-  { phase: "review", label: "Review", order: 5 },
-  { phase: "approved", label: "Approved", order: 6 },
-  { phase: "pr_submitted", label: "PR Submitted", order: 7 },
-  { phase: "done", label: "Done", order: 8 },
-] as const
+const PHASE_LABELS: Record<string, string> = {
+  planning: "Plan",
+  design_review: "Design",
+  in_progress: "Build",
+  qa_review: "Test",
+  review: "Review",
+  approved: "Approved",
+  pr_submitted: "PR Submitted",
+  done: "Done",
+}
+
+const PHASE_EMOJI: Record<string, string> = {
+  planning: "🚀",
+  design_review: "📋",
+  in_progress: "🔨",
+  qa_review: "✅",
+  review: "👁️",
+  approved: "👤",
+  pr_submitted: "🔀",
+  done: "🎉",
+}
+
+function formatDuration(ms: number | null | undefined): string {
+  if (!ms) return ""
+  if (ms < 1000) return `${ms}ms`
+  const secs = Math.floor(ms / 1000)
+  if (secs < 60) return `${secs}s`
+  const mins = Math.floor(secs / 60)
+  const remSecs = secs % 60
+  if (mins < 60) return remSecs > 0 ? `${mins}m ${remSecs}s` : `${mins}m`
+  const hrs = Math.floor(mins / 60)
+  const remMins = mins % 60
+  return remMins > 0 ? `${hrs}h ${remMins}m` : `${hrs}h`
+}
+
+function formatTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  } catch {
+    return ""
+  }
+}
+
+interface TimelineEvent {
+  timestamp: string
+  emoji: string
+  description: string
+  agent: string | null
+  durationLabel: string | null
+}
+
+function buildTimeline(packets: HandoffPacket[]): TimelineEvent[] {
+  // Sort by started_at, then completed_at
+  const sorted = [...packets].sort((a, b) => {
+    const ta = new Date(a.started_at).getTime()
+    const tb = new Date(b.started_at).getTime()
+    return ta - tb
+  })
+
+  const events: TimelineEvent[] = []
+
+  for (const packet of sorted) {
+    const phaseLabel = PHASE_LABELS[packet.phase] || packet.phase
+    const emoji = PHASE_EMOJI[packet.phase] || "📌"
+    const agentName = packet.agent_name || null
+    const durationStr = formatDuration(packet.duration_ms)
+
+    // Started event
+    events.push({
+      timestamp: packet.started_at,
+      emoji,
+      description: `Pipeline moved to ${phaseLabel}`,
+      agent: agentName,
+      durationLabel: null,
+    })
+
+    // Completed event
+    if (packet.completed_at && (packet.status === "completed" || packet.status === "rejected" || packet.status === "skipped")) {
+      const summary = packet.output_summary
+        ? packet.output_summary.split("\n")[0].slice(0, 80)
+        : null
+
+      const statusVerb =
+        packet.status === "completed" ? "completed" :
+        packet.status === "rejected" ? "rejected" :
+        "skipped"
+
+      const desc = summary
+        ? `${agentName || "Agent"} ${statusVerb} — ${summary}${packet.output_summary && packet.output_summary.length > 80 ? "…" : ""}`
+        : `${agentName || "Agent"} ${statusVerb} ${phaseLabel}`
+
+      events.push({
+        timestamp: packet.completed_at,
+        emoji: packet.status === "rejected" ? "❌" : emoji,
+        description: desc,
+        agent: agentName,
+        durationLabel: durationStr ? `${phaseLabel} phase: ${durationStr}` : null,
+      })
+    }
+  }
+
+  // Sort all events chronologically
+  events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+  return events
+}
 
 interface AuditTrailTabProps {
   featureId: string
@@ -26,20 +117,6 @@ interface AuditTrailTabProps {
 }
 
 export function AuditTrailTab({ featureId, featureStatus, packets, loading }: AuditTrailTabProps) {
-  const [expandedPhase, setExpandedPhase] = useState<string | null>(null)
-
-  // Auto-expand active phase on first load
-  useEffect(() => {
-    if (packets && packets.length > 0 && expandedPhase === null) {
-      const active = packets.find(p => p.status === "in_progress")
-      if (active) setExpandedPhase(active.phase)
-    }
-  }, [packets]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const handleToggle = (phase: string) => {
-    setExpandedPhase(prev => (prev === phase ? null : phase))
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-32">
@@ -61,82 +138,43 @@ export function AuditTrailTab({ featureId, featureStatus, packets, loading }: Au
     )
   }
 
-  // Group packets by phase, pick latest version per phase
-  const packetsByPhase: Record<string, HandoffPacket[]> = {}
-  for (const p of packets) {
-    if (!packetsByPhase[p.phase]) packetsByPhase[p.phase] = []
-    packetsByPhase[p.phase].push(p)
-  }
-
-  const currentPhaseIndex = PIPELINE_PHASES.findIndex(p => p.phase === featureStatus)
+  const events = buildTimeline(packets)
 
   return (
     <div className="flex-1 overflow-y-auto p-3">
-      {PIPELINE_PHASES.map((step, i) => {
-        const phasePackets = packetsByPhase[step.phase] || []
-        const latestPacket = phasePackets.length > 0
-          ? phasePackets.reduce((a, b) => (a.version > b.version ? a : b))
-          : null
-        const versionCount = phasePackets.length
-
-        let state: "completed" | "active" | "future"
-        if (latestPacket?.status === "completed" || latestPacket?.status === "skipped") {
-          state = "completed"
-        } else if (latestPacket?.status === "in_progress" || i === currentPhaseIndex) {
-          state = latestPacket ? "active" : (i === currentPhaseIndex ? "active" : "future")
-        } else if (i < currentPhaseIndex) {
-          state = "completed"
-        } else {
-          state = "future"
-        }
-
-        const isExpanded = expandedPhase === step.phase
-
-        return (
-          <div key={step.phase}>
-            <StepHeader
-              phase={step.phase}
-              label={step.label}
-              state={state}
-              packet={latestPacket}
-              versionCount={versionCount}
-              isExpanded={isExpanded}
-              onToggle={() => state !== "future" && handleToggle(step.phase)}
-            />
-
-            <AnimatePresence>
-              {isExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: "easeInOut" }}
-                  className="overflow-hidden"
-                >
-                  <div className="ml-[9px] pl-4 border-l border-white/10 pb-3">
-                    {latestPacket ? (
-                      <StepPanelContent packet={latestPacket} />
-                    ) : (
-                      <div className="py-2 px-3 text-center">
-                        <p className="text-[10px] text-white/30 italic">
-                          {state === "active"
-                            ? "Work in progress — data will appear as the agent completes this phase."
-                            : "No handoff data recorded for this phase."}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </motion.div>
+      <div className="space-y-0">
+        {events.map((event, i) => (
+          <div key={i} className="flex items-start gap-2.5 group">
+            {/* Timeline line + dot */}
+            <div className="flex flex-col items-center flex-shrink-0 w-3">
+              <div className="w-1.5 h-1.5 rounded-full bg-white/20 mt-1 group-hover:bg-purple-400/60 transition-colors" />
+              {i < events.length - 1 && (
+                <div className="w-px flex-1 bg-white/10 min-h-[16px]" />
               )}
-            </AnimatePresence>
+            </div>
 
-            {/* Vertical connector line */}
-            {i < PIPELINE_PHASES.length - 1 && (
-              <div className="w-px bg-white/10 ml-[9px] h-2" />
-            )}
+            {/* Content */}
+            <div className="pb-3 min-w-0 flex-1">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <span className="text-[10px] leading-relaxed text-white/60">
+                  <span className="mr-1">{event.emoji}</span>
+                  {event.description}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-[10px] text-white/30">
+                  {formatTime(event.timestamp)}
+                </span>
+                {event.durationLabel && (
+                  <span className="bg-white/5 text-white/40 text-[9px] px-1.5 rounded">
+                    {event.durationLabel}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
-        )
-      })}
+        ))}
+      </div>
     </div>
   )
 }

@@ -68,6 +68,8 @@ import { PipelineLog, type PipelineLogEntry } from "./PipelineLog"
 import { ChatInput } from "@/components/chat/ChatInput"
 import type { Attachment } from "@/components/chat/types"
 import { AuditTrailTab } from "./audit-trail"
+import { StepPanelContent } from "./audit-trail/StepPanelContent"
+import type { HandoffPacket } from "./audit-trail/types"
 import { useHandoffPackets } from "@/hooks/useHandoffPackets"
 import { ClipboardList } from "lucide-react"
 
@@ -234,32 +236,64 @@ const demoFeatures: Feature[] = [
 ]
 
 // ─── Pipeline Progress Bar ───────────────────────────────────────
-function PipelineProgress({ status }: { status: FeatureStatus }) {
+function PipelineProgress({
+  status,
+  selectedPhase,
+  onPhaseClick,
+}: {
+  status: FeatureStatus
+  selectedPhase?: string | null
+  onPhaseClick?: (phase: string) => void
+}) {
   if (status === 'cancelled') return null
   const currentIndex = pipelineStatuses.indexOf(status)
   const total = pipelineStatuses.length
+  const interactive = !!onPhaseClick
 
   return (
-    <div className="flex items-center gap-0.5">
-      {pipelineStatuses.map((s, i) => {
-        const col = columns.find(c => c.id === s)
-        const isComplete = i < currentIndex
-        const isCurrent = i === currentIndex
+    <div className="relative">
+      <div className="flex items-center gap-0.5">
+        {pipelineStatuses.map((s, i) => {
+          const col = columns.find(c => c.id === s)
+          const isComplete = i < currentIndex
+          const isCurrent = i === currentIndex
+          const isClickable = interactive && (isComplete || isCurrent)
+          const isSelected = selectedPhase === s
+
+          return (
+            <div
+              key={s}
+              title={col?.label || s}
+              onClick={isClickable ? (e) => { e.stopPropagation(); onPhaseClick!(s) } : undefined}
+              className={cn(
+                "h-1.5 flex-1 rounded-full transition-all",
+                isComplete ? "bg-green-400/60" :
+                isCurrent && s === 'done' ? "bg-green-400/80" :
+                isCurrent ? "bg-purple-400/80" :
+                "bg-white/10",
+                isClickable && "cursor-pointer hover:brightness-125",
+                isSelected && "ring-1 ring-white/40 brightness-150",
+              )}
+            />
+          )
+        })}
+        <span className="text-[9px] text-white/30 ml-1">{currentIndex + 1}/{total}</span>
+      </div>
+      {/* Selected phase indicator caret */}
+      {interactive && selectedPhase && (() => {
+        const idx = pipelineStatuses.indexOf(selectedPhase as FeatureStatus)
+        if (idx < 0) return null
+        // Position caret below the selected segment
+        const pct = ((idx + 0.5) / total) * 100
         return (
-          <div
-            key={s}
-            title={col?.label || s}
-            className={cn(
-              "h-1 flex-1 rounded-full transition-all",
-              isComplete ? "bg-green-400/60" :
-              isCurrent && s === 'done' ? "bg-green-400/80" :
-              isCurrent ? "bg-purple-400/80" :
-              "bg-white/10"
-            )}
-          />
+          <div className="relative w-full h-1.5" style={{ marginTop: '2px' }}>
+            <div
+              className="absolute w-0 h-0 border-l-[4px] border-r-[4px] border-t-[4px] border-l-transparent border-r-transparent border-t-purple-400/80 -translate-x-1/2"
+              style={{ left: `${pct}%` }}
+            />
+          </div>
         )
-      })}
-      <span className="text-[9px] text-white/30 ml-1">{currentIndex + 1}/{total}</span>
+      })()}
     </div>
   )
 }
@@ -924,10 +958,32 @@ function FeatureDetailPanel({
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
   const [activeTab, setActiveTab] = useState<'details' | 'chat' | 'specs' | 'audit'>('details')
+  const [selectedPhase, setSelectedPhase] = useState<string | null>(null)
   const [showReassign, setShowReassign] = useState(false)
   const [startingPipeline, setStartingPipeline] = useState(false)
   const chatEndRef = useRef<HTMLDivElement>(null)
-  const { packets: handoffPackets, loading: handoffLoading } = useHandoffPackets(feature.id, activeTab === 'audit')
+  const { packets: handoffPackets, loading: handoffLoading } = useHandoffPackets(feature.id, activeTab === 'audit' || selectedPhase !== null)
+
+  // Get the selected phase's packet for the progress bar click view
+  const selectedPhasePacket: HandoffPacket | null = (() => {
+    if (!selectedPhase || !handoffPackets) return null
+    const phasePackets = handoffPackets.filter(p => p.phase === selectedPhase)
+    if (phasePackets.length === 0) return null
+    return phasePackets.reduce((a, b) => (a.version > b.version ? a : b))
+  })()
+
+  const handlePhaseClick = (phase: string) => {
+    if (selectedPhase === phase) {
+      setSelectedPhase(null) // toggle off
+    } else {
+      setSelectedPhase(phase)
+    }
+  }
+
+  const handleTabClick = (tab: 'details' | 'chat' | 'specs' | 'audit') => {
+    setActiveTab(tab)
+    setSelectedPhase(null) // deselect progress bar on tab click
+  }
 
   const isUpdating = false
   const priority = priorityConfig[feature.priority]
@@ -1062,9 +1118,13 @@ function FeatureDetailPanel({
               <StatusDropdown currentStatus={feature.status} onStatusChange={onStatusChange} />
             </div>
             <h2 className="text-sm font-semibold text-white leading-tight">{feature.title}</h2>
-            {/* Pipeline Progress */}
+            {/* Pipeline Progress — clickable */}
             <div className="mt-1.5">
-              <PipelineProgress status={feature.status} />
+              <PipelineProgress
+                status={feature.status}
+                selectedPhase={selectedPhase}
+                onPhaseClick={handlePhaseClick}
+              />
             </div>
             {assignedAgent && (
               <div className="flex items-center gap-1 mt-1">
@@ -1107,21 +1167,53 @@ function FeatureDetailPanel({
 
         {/* Tabs */}
         <div className="flex gap-1 mt-2">
-          <button onClick={() => setActiveTab('details')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'details' ? "bg-white/10 text-white/80" : "text-white/40 hover:text-white/60")}>Details</button>
-          <button onClick={() => setActiveTab('specs')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'specs' ? "bg-blue-500/20 text-blue-300" : "text-white/40 hover:text-white/60")}>
+          <button onClick={() => handleTabClick('details')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'details' && !selectedPhase ? "bg-white/10 text-white/80" : "text-white/40 hover:text-white/60")}>Details</button>
+          <button onClick={() => handleTabClick('specs')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'specs' && !selectedPhase ? "bg-blue-500/20 text-blue-300" : "text-white/40 hover:text-white/60")}>
             <FileText className="h-3 w-3 inline mr-1" />Specs
           </button>
-          <button onClick={() => setActiveTab('chat')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'chat' ? "bg-purple-500/20 text-purple-300" : "text-white/40 hover:text-white/60")}>
+          <button onClick={() => handleTabClick('chat')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'chat' && !selectedPhase ? "bg-purple-500/20 text-purple-300" : "text-white/40 hover:text-white/60")}>
             <MessageSquare className="h-3 w-3 inline mr-1" />Chat {messages.length > 0 && `(${messages.length})`}
           </button>
-          <button onClick={() => setActiveTab('audit')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'audit' ? "bg-emerald-500/20 text-emerald-300" : "text-white/40 hover:text-white/60")}>
+          <button onClick={() => handleTabClick('audit')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'audit' && !selectedPhase ? "bg-emerald-500/20 text-emerald-300" : "text-white/40 hover:text-white/60")}>
             <ClipboardList className="h-3 w-3 inline mr-1" />Audit Trail
           </button>
         </div>
       </div>
 
-      {/* Tab Content */}
-      {activeTab === 'details' ? (
+      {/* Tab Content — phase click overrides tab */}
+      {selectedPhase ? (
+        <div className="flex-1 overflow-y-auto p-3">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-white/40 uppercase tracking-wider">
+                Phase Detail
+              </span>
+              <span className="text-[11px] text-white/70 font-medium">
+                {columns.find(c => c.id === selectedPhase)?.label || selectedPhase}
+              </span>
+            </div>
+            <button
+              onClick={() => setSelectedPhase(null)}
+              className="text-[10px] text-white/40 hover:text-white/60 transition-colors"
+            >
+              ✕ Close
+            </button>
+          </div>
+          {handoffLoading ? (
+            <div className="flex items-center justify-center h-20">
+              <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
+              <span className="text-[10px] text-white/30 ml-2">Loading phase data...</span>
+            </div>
+          ) : selectedPhasePacket ? (
+            <StepPanelContent packet={selectedPhasePacket} />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-20 text-center">
+              <p className="text-[11px] text-white/40">No handoff data for this phase yet</p>
+              <p className="text-[10px] text-white/25 mt-1">Data will appear as the agent completes this phase.</p>
+            </div>
+          )}
+        </div>
+      ) : activeTab === 'details' ? (
         <div className="flex-1 overflow-y-auto">
           {feature.description && (
             <div className="p-3 border-b border-white/5"><p className="text-xs text-white/70">{feature.description}</p></div>
