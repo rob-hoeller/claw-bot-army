@@ -169,10 +169,10 @@ const priorityConfig = {
 }
 
 const statusConfig: Record<FeatureStatus, { color: string; label: string }> = {
-  planning: { color: 'bg-gray-500/20 text-gray-400', label: 'Planning' },
-  design_review: { color: 'bg-blue-500/20 text-blue-400', label: 'Design Review' },
-  in_progress: { color: 'bg-yellow-500/20 text-yellow-400', label: 'In Progress' },
-  qa_review: { color: 'bg-orange-500/20 text-orange-400', label: 'QA Review' },
+  planning: { color: 'bg-gray-500/20 text-gray-400', label: 'Plan' },
+  design_review: { color: 'bg-blue-500/20 text-blue-400', label: 'Design' },
+  in_progress: { color: 'bg-yellow-500/20 text-yellow-400', label: 'Build' },
+  qa_review: { color: 'bg-orange-500/20 text-orange-400', label: 'Test' },
   review: { color: 'bg-purple-500/20 text-purple-400', label: 'Review' },
   approved: { color: 'bg-emerald-500/20 text-emerald-400', label: 'Approved' },
   pr_submitted: { color: 'bg-cyan-500/20 text-cyan-400', label: 'PR Submitted' },
@@ -1382,7 +1382,7 @@ function DroppableColumn({
   const laneBg = colIndex % 2 === 0 ? "bg-[#1a1a2e]/30" : "bg-[#16213e]/30"
 
   return (
-    <div className={cn("flex-1 min-w-[140px] rounded-md", laneBg)}>
+    <div className={cn("flex-1 min-w-0 rounded-md", laneBg)}>
       <div className="flex items-center gap-1 mb-2 px-0.5 pt-1">
         <Icon className={cn("h-3 w-3", column.color)} />
         <h3 className="text-[10px] font-medium text-white/60 truncate uppercase tracking-wider">{column.label}</h3>
