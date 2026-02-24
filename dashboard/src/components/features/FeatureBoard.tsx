@@ -1206,7 +1206,10 @@ function FeatureDetailPanel({
               <span className="text-[10px] text-white/30 ml-2">Loading phase data...</span>
             </div>
           ) : selectedPhasePacket ? (
-            <StepPanelContent packet={selectedPhasePacket} />
+            <StepPanelContent
+              packet={selectedPhasePacket}
+              phasePackets={handoffPackets?.filter(p => p.phase === selectedPhase).sort((a, b) => a.version - b.version)}
+            />
           ) : (
             <div className="flex flex-col items-center justify-center h-20 text-center">
               <p className="text-[11px] text-white/40">No handoff data for this phase yet</p>
