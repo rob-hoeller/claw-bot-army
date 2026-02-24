@@ -73,6 +73,7 @@ import type { HandoffPacket } from "./audit-trail/types"
 import { useHandoffPackets } from "@/hooks/useHandoffPackets"
 import { ClipboardList } from "lucide-react"
 import { PhaseChatPanel } from "./audit-trail/PhaseChatPanel"
+import { useCurrentUser } from "@/hooks/useCurrentUser"
 
 // ─── Types ───────────────────────────────────────────────────────
 type FeatureStatus =
@@ -550,9 +551,8 @@ function CreateFeaturePanel({
     }
   }
 
-  const requestedBy = agents.some(a => a.id === 'Lance')
-    ? 'Lance'
-    : (agents.find(a => a.id === 'HBx')?.id ?? agents[0]?.id ?? null)
+  const { userId: currentUserId } = useCurrentUser()
+  const requestedBy = currentUserId ?? (agents.find(a => a.id === 'HBx')?.id ?? agents[0]?.id ?? null)
 
   const [savingPhase, setSavingPhase] = useState<'idle' | 'generating' | 'creating'>('idle')
 
@@ -810,6 +810,7 @@ function ApproveButton({
   onApprove: (status: FeatureStatus) => void
   onError: (message: string) => void
 }) {
+  const { userId: currentUserId } = useCurrentUser()
   const [loading, setLoading] = useState(false)
   const [creatingPR, setCreatingPR] = useState(false)
   const allowed = validTransitions[feature.status]?.includes(targetStatus)
@@ -834,7 +835,7 @@ function ApproveButton({
           const res = await fetch(`/api/features/${feature.id}/approve`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ target_status: targetStatus, approved_by: 'Lance' }),
+            body: JSON.stringify({ target_status: targetStatus, approved_by: currentUserId ?? 'unknown' }),
           })
           if (!res.ok) {
             const body = await res.json().catch(() => null)
@@ -892,6 +893,7 @@ function FeatureDetailPanel({
   onError: (message: string) => void
 }) {
   const [messages, setMessages] = useState<BridgeMessage[]>([])
+  const { userId: currentUserId, userName: currentUserName } = useCurrentUser()
   const [newMessage, setNewMessage] = useState("")
   const [loadingMessages, setLoadingMessages] = useState(true)
   const [sending, setSending] = useState(false)
@@ -972,8 +974,8 @@ function FeatureDetailPanel({
     setSending(true)
 
     const optimistic: BridgeMessage = {
-      id: `opt-${Date.now()}`, work_item_id: feature.id, sender_type: 'user', sender_id: 'Lance',
-      sender_name: 'Lance', content, metadata: {}, created_at: new Date().toISOString(),
+      id: `opt-${Date.now()}`, work_item_id: feature.id, sender_type: 'user', sender_id: currentUserId ?? 'unknown',
+      sender_name: currentUserName ?? 'Unknown', content, metadata: {}, created_at: new Date().toISOString(),
     }
     setMessages(prev => [...prev, optimistic])
 
@@ -987,7 +989,7 @@ function FeatureDetailPanel({
       const saveRes = await fetch(`/api/work-items/${feature.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sender_type: 'user', sender_id: 'Lance', sender_name: 'Lance', content: messageContent }),
+        body: JSON.stringify({ sender_type: 'user', sender_id: currentUserId ?? 'unknown', sender_name: currentUserName ?? 'Unknown', content: messageContent }),
       })
       if (saveRes.ok) {
         const saved = await saveRes.json()
@@ -1163,11 +1165,7 @@ function FeatureDetailPanel({
               <div className="flex items-center gap-1.5">
                 <User className="h-3 w-3 text-white/30" /><span className="text-white/50">Requested:</span>
                 <span className="text-white/80">{
-                  feature.requested_by === 'HBx' ? 'HBx' :
-                  feature.requested_by === 'lance' || feature.requested_by === 'Lance' ? 'Lance Manlove' :
-                  feature.requested_by === 'rob-hoeller' ? 'Rob Hoeller' :
-                  feature.requested_by === 'RobLepard' ? 'Rob Lepard' :
-                  feature.requested_by || '—'
+                  agents.find(a => a.id === feature.requested_by)?.name || feature.requested_by || '—'
                 }</span>
               </div>
               <div className="flex items-center gap-1.5">
