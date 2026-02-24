@@ -64,7 +64,7 @@ import { ConnectionIndicator } from "./ConnectionIndicator"
 import { PipelineActivityFeed } from "./PipelineActivityFeed"
 import { PipelineStagePill } from "./PipelineStagePill"
 import { RevisionBadge } from "./RevisionBadge"
-import { PipelineLog, type PipelineLogEntry } from "./PipelineLog"
+import { type PipelineLogEntry } from "./PipelineLog"
 import { ChatInput } from "@/components/chat/ChatInput"
 import type { Attachment } from "@/components/chat/types"
 import { AuditTrailTab } from "./audit-trail"
@@ -897,7 +897,7 @@ function FeatureDetailPanel({
   const [sending, setSending] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
-  const [activeTab, setActiveTab] = useState<'details' | 'chat' | 'specs' | 'audit'>('details')
+  const [activeTab, setActiveTab] = useState<'details' | 'audit'>('details')
   const [selectedPhase, setSelectedPhase] = useState<string | null>(null)
   const [showReassign, setShowReassign] = useState(false)
   const [startingPipeline, setStartingPipeline] = useState(false)
@@ -920,7 +920,7 @@ function FeatureDetailPanel({
     }
   }
 
-  const handleTabClick = (tab: 'details' | 'chat' | 'specs' | 'audit') => {
+  const handleTabClick = (tab: 'details' | 'audit') => {
     setActiveTab(tab)
     setSelectedPhase(null) // deselect progress bar on tab click
   }
@@ -958,7 +958,7 @@ function FeatureDetailPanel({
     return () => { supabase!.removeChannel(channel) }
   }, [feature.id])
 
-  useEffect(() => { if (activeTab === 'chat') scrollToBottom() }, [messages, streamingContent, activeTab, scrollToBottom])
+  // Bridge chat scrolling removed — chat is now embedded in phase views
 
   const buildHistory = useCallback(() =>
     messages.filter(m => m.sender_type === 'user' || m.sender_type === 'agent')
@@ -1105,55 +1105,45 @@ function FeatureDetailPanel({
           </a>
         )}
 
-        {/* Tabs */}
+        {/* Tabs — only Details and Audit Trail */}
         <div className="flex gap-1 mt-2">
           <button onClick={() => handleTabClick('details')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'details' && !selectedPhase ? "bg-white/10 text-white/80" : "text-white/40 hover:text-white/60")}>Details</button>
-          <button onClick={() => handleTabClick('specs')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'specs' && !selectedPhase ? "bg-blue-500/20 text-blue-300" : "text-white/40 hover:text-white/60")}>
-            <FileText className="h-3 w-3 inline mr-1" />Specs
-          </button>
-          <button onClick={() => handleTabClick('chat')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'chat' && !selectedPhase ? "bg-purple-500/20 text-purple-300" : "text-white/40 hover:text-white/60")}>
-            <MessageSquare className="h-3 w-3 inline mr-1" />Chat {messages.length > 0 && `(${messages.length})`}
-          </button>
           <button onClick={() => handleTabClick('audit')} className={cn("px-2 py-1 text-[10px] rounded transition-all", activeTab === 'audit' && !selectedPhase ? "bg-emerald-500/20 text-emerald-300" : "text-white/40 hover:text-white/60")}>
             <ClipboardList className="h-3 w-3 inline mr-1" />Audit Trail
           </button>
+          {selectedPhase && (
+            <span className="px-2 py-1 text-[10px] rounded bg-purple-500/20 text-purple-300 ml-auto">
+              {columns.find(c => c.id === selectedPhase)?.label || selectedPhase}
+              <button onClick={() => setSelectedPhase(null)} className="ml-1 text-white/40 hover:text-white/60">✕</button>
+            </span>
+          )}
         </div>
       </div>
 
       {/* Tab Content — phase click overrides tab */}
       {selectedPhase ? (
         <div className="flex-1 overflow-y-auto p-3">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] text-white/40 uppercase tracking-wider">
-                Phase Detail
-              </span>
-              <span className="text-[11px] text-white/70 font-medium">
-                {columns.find(c => c.id === selectedPhase)?.label || selectedPhase}
-              </span>
-            </div>
-            <button
-              onClick={() => setSelectedPhase(null)}
-              className="text-[10px] text-white/40 hover:text-white/60 transition-colors"
-            >
-              ✕ Close
-            </button>
-          </div>
           {handoffLoading ? (
             <div className="flex items-center justify-center h-20">
               <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
               <span className="text-[10px] text-white/30 ml-2">Loading phase data...</span>
             </div>
-          ) : selectedPhasePacket ? (
+          ) : (
             <StepPanelContent
               packet={selectedPhasePacket}
               phasePackets={handoffPackets?.filter(p => p.phase === selectedPhase).sort((a, b) => a.version - b.version)}
+              phase={selectedPhase}
+              featureSpec={feature.feature_spec}
+              designSpec={feature.design_spec}
+              acceptanceCriteria={feature.acceptance_criteria}
+              prUrl={feature.pr_url}
+              prNumber={feature.pr_number}
+              prStatus={feature.pr_status}
+              vercelPreviewUrl={feature.vercel_preview_url}
+              featureId={feature.id}
+              agents={agents}
+              approvedBy={feature.approved_by}
             />
-          ) : (
-            <div className="flex flex-col items-center justify-center h-20 text-center">
-              <p className="text-[11px] text-white/40">No handoff data for this phase yet</p>
-              <p className="text-[10px] text-white/25 mt-1">Data will appear as the agent completes this phase.</p>
-            </div>
           )}
         </div>
       ) : activeTab === 'details' ? (
@@ -1262,16 +1252,6 @@ function FeatureDetailPanel({
             </div>
           )}
 
-          {/* Pipeline Log */}
-          <PipelineLog log={feature.pipeline_log || []} />
-
-          {feature.acceptance_criteria && (
-            <div className="p-3 border-b border-white/5">
-              <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Acceptance Criteria</div>
-              <pre className="text-[11px] text-white/70 whitespace-pre-wrap font-mono">{feature.acceptance_criteria}</pre>
-            </div>
-          )}
-
           {/* Cost Tracking */}
           <div className="p-3 border-b border-white/5 space-y-2">
             <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1 flex items-center gap-1">
@@ -1299,100 +1279,18 @@ function FeatureDetailPanel({
             )}
           </div>
         </div>
-      ) : activeTab === 'specs' ? (
-        <div className="flex-1 overflow-y-auto p-3 space-y-3">
-          <div>
-            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Feature Spec</div>
-            {feature.feature_spec ? (
-              <pre className="text-[11px] text-white/70 whitespace-pre-wrap font-mono bg-white/[0.02] rounded p-2 border border-white/5">{feature.feature_spec}</pre>
-            ) : (
-              <p className="text-[11px] text-white/30">No feature spec yet. The Product Architect will generate this during planning.</p>
-            )}
-          </div>
-          <div>
-            <div className="text-[10px] text-white/40 uppercase tracking-wider mb-1">Design Spec</div>
-            {feature.design_spec ? (
-              <pre className="text-[11px] text-white/70 whitespace-pre-wrap font-mono bg-white/[0.02] rounded p-2 border border-white/5">{feature.design_spec}</pre>
-            ) : (
-              <p className="text-[11px] text-white/30">No design spec yet. Created during design review phase.</p>
-            )}
-          </div>
-        </div>
-      ) : (
-        activeTab === 'audit' ? (
+      ) : activeTab === 'audit' ? (
         <AuditTrailTab
           featureId={feature.id}
           featureStatus={feature.status}
           packets={handoffPackets}
           loading={handoffLoading}
+          approvedBy={feature.approved_by}
         />
-      ) : (
-        /* Chat Tab */
-        <div className="flex-1 overflow-y-auto p-3">
-          {loadingMessages ? (
-            <div className="flex items-center justify-center h-20">
-              <Loader2 className="h-4 w-4 text-purple-400 animate-spin" />
-              <span className="text-[10px] text-white/30 ml-2">Loading chat...</span>
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-center">
-              <Zap className="h-6 w-6 text-purple-400/40 mb-2" />
-              <p className="text-[11px] text-white/40">No messages yet</p>
-              <p className="text-[10px] text-white/25 mt-1">
-                {assignedAgent ? `Message ${assignedAgent.emoji} ${assignedAgent.name}` : 'Assign an agent first'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {messages.map((msg) => (<BridgeChatMessage key={msg.id} msg={msg} agents={agents} />))}
-              {isStreaming && streamingContent && (
-                <div className="flex gap-2">
-                  <span className="text-sm flex-shrink-0 mt-0.5">{assignedAgent?.emoji || '🤖'}</span>
-                  <div className="max-w-[80%] rounded-lg px-2.5 py-1.5 bg-white/[0.04] border border-white/10">
-                    <div className="flex items-baseline gap-2 mb-0.5">
-                      <span className="text-[10px] font-medium text-white/70">{assignedAgent?.name || 'Agent'}</span>
-                      <Badge className="text-[8px] px-1 py-0 h-3.5 border bg-purple-500/20 text-purple-300 border-purple-500/30">agent</Badge>
-                    </div>
-                    <p className="text-[11px] text-white/70 whitespace-pre-wrap">{streamingContent}</p>
-                  </div>
-                </div>
-              )}
-              {sending && !isStreaming && (
-                <div className="flex gap-2">
-                  <span className="text-sm flex-shrink-0 mt-0.5">{assignedAgent?.emoji || '🤖'}</span>
-                  <div className="rounded-lg px-2.5 py-1.5 bg-white/[0.04] border border-white/10">
-                    <div className="flex gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-          )}
-        </div>
-      ))}
+      ) : null}
 
-      {/* Chat Input */}
-      <div className="flex-shrink-0 p-3 border-t border-white/10">
-        {!assignedAgent && activeTab === 'chat' ? (
-          <div className="flex items-center gap-2 text-[10px] text-yellow-400/60">
-            <AlertCircle className="h-3 w-3" /><span>Assign an agent to enable Live Bridge chat</span>
-          </div>
-        ) : (
-          <div className="flex gap-2">
-            <Input placeholder={activeTab === 'chat' ? `Message ${assignedAgent?.name || 'agent'}...` : 'Switch to Chat tab'}
-              value={newMessage} onChange={(e) => setNewMessage(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSendMessage()}
-              disabled={activeTab !== 'chat' || sending} className="flex-1 h-8 text-xs bg-white/5 border-white/10" />
-            <Button size="sm" onClick={handleSendMessage} disabled={!newMessage.trim() || sending || activeTab !== 'chat'} className="h-8 w-8 p-0">
-              {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-            </Button>
-          </div>
-        )}
-      </div>
+      {/* Bottom spacer */}
+      <div className="flex-shrink-0 h-2" />
     </motion.div>
   )
 }
