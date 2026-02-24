@@ -92,7 +92,7 @@ export function usePhaseChatMessages(
         id: optimisticId,
         feature_id: featureId,
         phase,
-        author_type: "user",
+        author_type: "human",
         author_id: "lance",
         author_name: "Lance Manlove",
         content,
@@ -111,7 +111,7 @@ export function usePhaseChatMessages(
           body: JSON.stringify({
             phase,
             content,
-            author_type: "user",
+            author_type: "human",
             author_id: "lance",
             author_name: "Lance Manlove",
             mentions,

@@ -84,7 +84,7 @@ export interface PhaseChatMessage {
   id: string
   feature_id: string
   phase: "planning" | "review"
-  author_type: "user" | "agent" | "orchestrator"
+  author_type: "human" | "agent" | "orchestrator"
   author_id: string
   author_name: string
   author_avatar?: string | null
