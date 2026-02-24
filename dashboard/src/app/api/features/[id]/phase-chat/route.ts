@@ -69,7 +69,7 @@ export async function POST(
 
   try {
     const body = await req.json()
-    const { phase, content, author_type, author_id, author_name, mentions } = body
+    const { phase, content, author_type, author_id, author_name, mentions, attachments } = body
 
     if (!phase || !VALID_PHASES.has(phase)) {
       return NextResponse.json(
@@ -103,6 +103,7 @@ export async function POST(
         author_name,
         content: content.trim(),
         mentions: mentionsArray,
+        attachments: Array.isArray(attachments) ? attachments : [],
       })
       .select()
       .single()

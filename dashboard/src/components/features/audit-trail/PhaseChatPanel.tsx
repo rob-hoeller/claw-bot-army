@@ -19,8 +19,8 @@ interface PhaseChatPanelProps {
 export function PhaseChatPanel({ featureId, phase, agents }: PhaseChatPanelProps) {
   const { messages, loading, sendMessage } = usePhaseChatMessages(featureId, phase)
 
-  const handleSend = (content: string, mentions: string[]) => {
-    sendMessage(content, mentions)
+  const handleSend = (content: string, mentions: string[], attachments: import("@/components/chat/types").Attachment[]) => {
+    sendMessage(content, mentions, attachments)
   }
 
   return (

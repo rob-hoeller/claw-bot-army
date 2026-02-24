@@ -90,6 +90,7 @@ export interface PhaseChatMessage {
   author_avatar?: string | null
   content: string
   mentions: string[]
+  attachments?: Array<{type: 'image' | 'video' | 'file'; url: string; name: string; size?: number; mimeType?: string}>
   created_at: string
   edited_at?: string | null
   handoff_packet_id?: string | null

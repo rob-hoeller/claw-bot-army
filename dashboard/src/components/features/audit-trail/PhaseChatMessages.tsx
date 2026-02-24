@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, type ReactNode } from "react"
 import { cn } from "@/lib/utils"
-import { MessageSquare, Loader2 } from "lucide-react"
+import { MessageSquare, Loader2, FileText, Play } from "lucide-react"
 import type { PhaseChatMessage } from "@/hooks/usePhaseChatMessages"
 
 interface Agent {
@@ -131,6 +131,49 @@ export function PhaseChatMessages({ messages, agents, loading }: PhaseChatMessag
               >
                 {renderContentWithMentions(msg.content, msg.mentions, agents)}
               </p>
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {msg.attachments.map((att, i) => {
+                    if (att.type === "image") {
+                      return (
+                        <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="block">
+                          <img
+                            src={att.url}
+                            alt={att.name}
+                            className="max-w-[160px] max-h-[120px] rounded-md border border-white/10 object-cover hover:opacity-80 transition-opacity"
+                          />
+                        </a>
+                      )
+                    }
+                    if (att.type === "video") {
+                      return (
+                        <a
+                          key={i}
+                          href={att.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                        >
+                          <Play className="h-3 w-3 text-purple-400" />
+                          <span className="text-[10px] text-white/60 truncate max-w-[120px]">{att.name}</span>
+                        </a>
+                      )
+                    }
+                    return (
+                      <a
+                        key={i}
+                        href={att.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 border border-white/10 hover:bg-white/10 transition-colors"
+                      >
+                        <FileText className="h-3 w-3 text-white/40" />
+                        <span className="text-[10px] text-white/60 truncate max-w-[120px]">{att.name}</span>
+                      </a>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )
