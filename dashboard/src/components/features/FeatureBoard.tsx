@@ -1086,7 +1086,7 @@ function FeatureDetailPanel({
               <ApproveButton feature={feature} targetStatus="review" label="QA Pass → Review" onApprove={onStatusChange} onError={onError} />
             )}
             {feature.status === 'review' && (
-              <ApproveButton feature={feature} targetStatus="approved" label="Approve → Ready" onApprove={onStatusChange} onError={onError} />
+              <ApproveButton feature={feature} targetStatus="approved" label="Approve" onApprove={onStatusChange} onError={onError} />
             )}
           </div>
         )}

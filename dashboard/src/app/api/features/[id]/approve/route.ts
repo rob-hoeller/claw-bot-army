@@ -101,6 +101,30 @@ export async function POST(
       console.error("[API] Approval message error:", msgErr)
     }
 
+    // Write handoff packet for approval (review → approved)
+    if (target_status === "approved" && approved_by) {
+      try {
+        const now = new Date().toISOString()
+        await sb.from("handoff_packets").insert({
+          feature_id: id,
+          phase: "approved",
+          version: 1,
+          agent_id: approved_by.toLowerCase().replace(/\s+/g, "-"),
+          agent_name: approved_by,
+          agent_type: "human",
+          status: "completed",
+          started_at: now,
+          completed_at: now,
+          output_summary: `${approved_by} approved this feature for PR submission.`,
+          output_artifacts: [],
+          output_decisions: [{ question: "Approve for PR?", chosen: "Approved", alternatives: ["Revise", "Reject"], rationale: "Reviewed and approved", decided_by: approved_by }],
+          activity_log: [{ timestamp: now, actor: { id: approved_by.toLowerCase().replace(/\s+/g, "-"), type: "human", name: approved_by }, action: `${approved_by} approved at ${new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`, detail: {} }],
+        })
+      } catch (handoffErr) {
+        console.error("[API] Approval handoff packet error:", handoffErr)
+      }
+    }
+
     // Fire-and-forget gateway notification for pipeline routing
     const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL
     const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
