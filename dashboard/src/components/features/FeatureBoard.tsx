@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, type KeyboardEvent } from "react"
 import { motion, AnimatePresence, LayoutGroup } from "framer-motion"
 import {
   DndContext,
@@ -36,6 +36,8 @@ import {
   ExternalLink,
   MessageSquare,
   Send,
+  Paperclip,
+  Image as ImageIcon,
   Link2,
   Calendar,
   User,
@@ -65,6 +67,55 @@ import { PipelineActivityFeed } from "./PipelineActivityFeed"
 import { PipelineStagePill } from "./PipelineStagePill"
 import { RevisionBadge } from "./RevisionBadge"
 import { PipelineLog, type PipelineLogEntry } from "./PipelineLog"
+import { Attachment } from "@/components/chat/types"
+
+// ─── File Upload Utilities ───────────────────────────────────────
+interface PendingFile {
+  file: File
+  preview?: string
+  type: 'image' | 'video' | 'file'
+}
+
+function classifyFile(file: File): 'image' | 'video' | 'file' {
+  if (file.type.startsWith('image/')) return 'image'
+  if (file.type.startsWith('video/')) return 'video'
+  return 'file'
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
+async function uploadFile(file: File): Promise<Attachment> {
+  const fileType = classifyFile(file)
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await fetch('/api/chat/upload', { method: 'POST', body: formData })
+    if (response.ok) {
+      const data = await response.json()
+      return { type: fileType, url: data.url, name: data.name, size: data.size, mimeType: data.mimeType }
+    }
+    console.warn('Upload returned', response.status, '— falling back to base64')
+  } catch (err) {
+    console.warn('Upload failed — falling back to base64:', err)
+  }
+  const dataUrl = await fileToBase64(file)
+  return { type: fileType, url: dataUrl, name: file.name, size: file.size, mimeType: file.type }
+}
+
+function filesToPending(files: File[]): PendingFile[] {
+  return files.map(file => ({
+    file,
+    type: classifyFile(file),
+    preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined,
+  }))
+}
 
 // ─── Types ───────────────────────────────────────────────────────
 type FeatureStatus =
@@ -472,16 +523,73 @@ function CreateFeaturePanel({
   // Form state removed (chat-only flow)
   const [saving, setSaving] = useState(false)
   const [notice, setNotice] = useState<{ type: 'error' | 'info'; message: string } | null>(null)
-  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([
+  const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; content: string; attachments?: Attachment[] }>>([
     { role: 'assistant', content: "👋 I'm **IN1** — your Product Architect. Let's plan this feature together.\n\nWhat problem are you looking to solve?" },
   ])
   const [chatInput, setChatInput] = useState("")
   const [chatting, setChatting] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const [isDragOver, setIsDragOver] = useState(false)
   // chat-only mode
   const chatEndRef = useRef<HTMLDivElement>(null)
   const abortControllerRef = useRef<AbortController | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+  const dragCounterRef = useRef(0)
+
+  const addFiles = useCallback((files: File[]) => {
+    if (files.length === 0) return
+    setPendingFiles(prev => [...prev, ...filesToPending(files)])
+  }, [])
+
+  const removePendingFile = (index: number) => {
+    setPendingFiles(prev => {
+      const updated = [...prev]
+      if (updated[index].preview) URL.revokeObjectURL(updated[index].preview!)
+      updated.splice(index, 1)
+      return updated
+    })
+  }
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    addFiles(Array.from(e.target.files || []))
+    e.target.value = ''
+  }
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const imageItems = Array.from(e.clipboardData.items).filter(item => item.type.startsWith('image/'))
+    if (imageItems.length > 0) {
+      e.preventDefault()
+      addFiles(imageItems.map(item => item.getAsFile()).filter((f): f is File => f !== null))
+    }
+  }
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    dragCounterRef.current += 1
+    if (e.dataTransfer.types.includes('Files')) setIsDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    dragCounterRef.current -= 1
+    if (dragCounterRef.current === 0) setIsDragOver(false)
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation()
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault(); e.stopPropagation()
+    dragCounterRef.current = 0
+    setIsDragOver(false)
+    addFiles(Array.from(e.dataTransfer.files))
+  }, [addFiles])
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -490,10 +598,37 @@ function CreateFeaturePanel({
   const assistantMessageCount = chatMessages.filter(m => m.role === 'assistant').length
 
   const handleChatSend = async () => {
-    if (!chatInput.trim() || chatting || isStreaming) return
+    if ((!chatInput.trim() && pendingFiles.length === 0) || chatting || isStreaming || isUploading) return
     const msg = chatInput.trim()
     setChatInput("")
-    const updatedMessages = [...chatMessages, { role: 'user' as const, content: msg }]
+    if (textareaRef.current) { textareaRef.current.style.height = 'auto' }
+
+    // Upload pending files
+    let attachments: Attachment[] = []
+    if (pendingFiles.length > 0) {
+      setIsUploading(true)
+      try {
+        attachments = await Promise.all(pendingFiles.map(pf => uploadFile(pf.file)))
+      } catch (err) {
+        console.error('Upload failed:', err)
+        setIsUploading(false)
+        return
+      }
+      pendingFiles.forEach(pf => { if (pf.preview) URL.revokeObjectURL(pf.preview) })
+      setPendingFiles([])
+      setIsUploading(false)
+    }
+
+    // Build content with attachment references for the LLM
+    let content = msg
+    if (attachments.length > 0) {
+      const attachmentDesc = attachments.map(a =>
+        a.type === 'image' ? `[Attached image: ${a.name}]` : `[Attached file: ${a.name}]`
+      ).join('\n')
+      content = content ? `${content}\n\n${attachmentDesc}` : attachmentDesc
+    }
+
+    const updatedMessages = [...chatMessages, { role: 'user' as const, content, attachments }]
     setChatMessages(updatedMessages)
     setChatting(true)
 
@@ -685,6 +820,22 @@ function CreateFeaturePanel({
                   msg.role === 'user' ? "bg-blue-600/20 border border-blue-500/20" : "bg-white/[0.04] border border-white/10"
                 )}>
                   {msg.content}
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {msg.attachments.map((att, j) =>
+                        att.type === 'image' ? (
+                          <a key={j} href={att.url} target="_blank" rel="noopener noreferrer" className="block">
+                            <img src={att.url} alt={att.name} className="max-w-[160px] max-h-[120px] rounded border border-white/10 cursor-pointer hover:border-purple-500/50 transition-colors" />
+                          </a>
+                        ) : (
+                          <a key={j} href={att.url} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 px-2 py-1 rounded bg-white/5 border border-white/10 hover:border-purple-500/40 transition-colors text-[10px] text-purple-300">
+                            <FileText className="h-3 w-3" />{att.name}
+                          </a>
+                        )
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -725,22 +876,86 @@ function CreateFeaturePanel({
             </div>
           )}
           {/* Chat input */}
-          <div className="flex-shrink-0 p-3 border-t border-white/10">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Describe your feature idea..."
+          <div
+            className={cn(
+              "flex-shrink-0 p-3 border-t border-white/10 transition-colors",
+              isDragOver && "bg-purple-500/10 border-purple-500/40"
+            )}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            {isDragOver && (
+              <div className="flex items-center justify-center py-2 mb-2 rounded-lg border-2 border-dashed border-purple-500/50 bg-purple-500/5">
+                <p className="text-[10px] text-purple-300">Drop files here</p>
+              </div>
+            )}
+            {pendingFiles.length > 0 && (
+              <div className="flex gap-1.5 mb-2 flex-wrap">
+                {pendingFiles.map((pf, index) => (
+                  <div key={index} className="relative group">
+                    {pf.type === 'image' && pf.preview ? (
+                      <div className="w-12 h-12 rounded-lg overflow-hidden border border-white/10">
+                        <img src={pf.preview} alt={pf.file.name} className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-lg border border-white/10 bg-white/5 flex flex-col items-center justify-center">
+                        <span className="text-[8px] font-medium text-purple-300">{pf.file.name.split('.').pop()?.toUpperCase()}</span>
+                        <span className="text-[7px] text-white/30 px-0.5 truncate max-w-[44px]">{pf.file.name}</span>
+                      </div>
+                    )}
+                    <button onClick={() => removePendingFile(index)}
+                      className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <X className="h-2.5 w-2.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-1.5">
+              <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
+              <input ref={imageInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={handleFileSelect} />
+              <div className="flex gap-0.5">
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-white/30 hover:text-white/60"
+                  onClick={() => fileInputRef.current?.click()} disabled={chatting || isStreaming || isUploading} title="Attach files">
+                  <Paperclip className="h-3.5 w-3.5" />
+                </Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7 text-white/30 hover:text-white/60"
+                  onClick={() => imageInputRef.current?.click()} disabled={chatting || isStreaming || isUploading} title="Attach images">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <textarea
+                ref={textareaRef}
                 value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleChatSend()}
-                disabled={chatting || isStreaming}
-                className="flex-1 h-8 text-xs bg-white/5 border-white/10"
+                onChange={(e) => {
+                  setChatInput(e.target.value)
+                  e.target.style.height = 'auto'
+                  e.target.style.height = Math.min(e.target.scrollHeight, 150) + 'px'
+                }}
+                onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatSend() }
+                }}
+                onPaste={handlePaste}
+                placeholder={isUploading ? "Uploading..." : "Describe your feature idea..."}
+                disabled={chatting || isStreaming || isUploading}
+                rows={1}
+                className={cn(
+                  "flex-1 resize-none rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white placeholder:text-white/30",
+                  "focus:outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/20",
+                  "disabled:opacity-50 disabled:cursor-not-allowed max-h-[150px]"
+                )}
                 autoFocus
               />
-              <Button size="sm" onClick={handleChatSend} disabled={!chatInput.trim() || chatting || isStreaming} className="h-8 w-8 p-0">
-                {chatting || isStreaming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+              <Button size="sm" onClick={handleChatSend}
+                disabled={(!chatInput.trim() && pendingFiles.length === 0) || chatting || isStreaming || isUploading}
+                className="h-7 w-7 p-0">
+                {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> :
+                  chatting || isStreaming ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
               </Button>
             </div>
-            <p className="text-[9px] text-white/20 mt-1">Plan with IN1, then create directly.</p>
+            <p className="text-[9px] text-white/20 mt-1">Enter to send · Shift+Enter for new line · Paste or drag files</p>
           </div>
       </>
     </motion.div>
