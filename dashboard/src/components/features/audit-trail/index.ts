@@ -1,2 +1,7 @@
 export { AuditTrailTab } from "./AuditTrailTab"
 export type { HandoffPacket, Artifact, Decision, ActivityEvent } from "./types"
+export * from "./types"
+export { PhaseChatPanel } from "./PhaseChatPanel"
+export { PhaseChatMessages } from "./PhaseChatMessages"
+export { PhaseChatInput } from "./PhaseChatInput"
+export { MentionAutocomplete } from "./MentionAutocomplete"

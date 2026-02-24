@@ -57,8 +57,8 @@ interface TimelineEvent {
 function buildTimeline(packets: HandoffPacket[]): TimelineEvent[] {
   // Sort by started_at, then completed_at
   const sorted = [...packets].sort((a, b) => {
-    const ta = new Date(a.started_at).getTime()
-    const tb = new Date(b.started_at).getTime()
+    const ta = new Date(a.started_at || 0).getTime()
+    const tb = new Date(b.started_at || 0).getTime()
     return ta - tb
   })
 
@@ -72,7 +72,7 @@ function buildTimeline(packets: HandoffPacket[]): TimelineEvent[] {
 
     // Started event
     events.push({
-      timestamp: packet.started_at,
+      timestamp: packet.started_at || packet.created_at,
       emoji,
       description: `Pipeline moved to ${phaseLabel}`,
       agent: agentName,

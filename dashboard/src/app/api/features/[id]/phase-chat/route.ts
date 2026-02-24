@@ -1,0 +1,118 @@
+import { NextRequest, NextResponse } from "next/server"
+import { createClient } from "@supabase/supabase-js"
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+function getSupabase() {
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error("Supabase service role key is not configured")
+  }
+  return createClient(supabaseUrl, supabaseKey)
+}
+
+const VALID_PHASES = new Set(["planning", "review"])
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+  const phase = req.nextUrl.searchParams.get("phase")
+
+  if (!phase || !VALID_PHASES.has(phase)) {
+    return NextResponse.json(
+      { error: "Invalid or missing phase query param. Must be 'planning' or 'review'." },
+      { status: 400 }
+    )
+  }
+
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json(
+      { error: "Server misconfiguration: missing required environment variables." },
+      { status: 503 }
+    )
+  }
+
+  try {
+    const sb = getSupabase()
+    const { data, error } = await sb
+      .from("phase_chat_messages")
+      .select("*")
+      .eq("feature_id", id)
+      .eq("phase", phase)
+      .order("created_at", { ascending: true })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json({ messages: data ?? [] })
+  } catch (err) {
+    console.error("[API] Phase chat GET error:", err)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: featureId } = await params
+
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json(
+      { error: "Server misconfiguration: missing required environment variables." },
+      { status: 503 }
+    )
+  }
+
+  try {
+    const body = await req.json()
+    const { phase, content, sender_type, sender_id, sender_name, mentions } = body
+
+    if (!phase || !VALID_PHASES.has(phase)) {
+      return NextResponse.json(
+        { error: "Invalid phase. Must be 'planning' or 'review'." },
+        { status: 400 }
+      )
+    }
+
+    if (!content || typeof content !== "string" || !content.trim()) {
+      return NextResponse.json({ error: "content is required" }, { status: 400 })
+    }
+
+    if (!sender_type || !sender_id || !sender_name) {
+      return NextResponse.json(
+        { error: "sender_type, sender_id, and sender_name are required" },
+        { status: 400 }
+      )
+    }
+
+    const sb = getSupabase()
+
+    const { data, error } = await sb
+      .from("phase_chat_messages")
+      .insert({
+        feature_id: featureId,
+        phase,
+        sender_type,
+        sender_id,
+        sender_name,
+        content: content.trim(),
+        mentions: Array.isArray(mentions) ? mentions : [],
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error("[API] Phase chat POST error:", error)
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json(data, { status: 201 })
+  } catch (err) {
+    console.error("[API] Phase chat POST error:", err)
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  }
+}
