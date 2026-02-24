@@ -41,7 +41,7 @@ export async function POST(
     const { data, error } = await sb
       .from("features")
       .update({
-        status: "approved",
+        status: "design_review",
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
@@ -59,7 +59,7 @@ export async function POST(
         sender_type: "orchestrator",
         sender_id: "system",
         sender_name: "System",
-        content: `🚀 **Pipeline started** — feature moved to **approved** for HBx pickup`,
+        content: `🚀 **Pipeline started** — feature moved to **Design Review**`,
       })
     } catch {
       // non-critical
