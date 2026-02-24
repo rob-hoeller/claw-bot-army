@@ -69,7 +69,7 @@ export async function POST(
 
   try {
     const body = await req.json()
-    const { phase, content, sender_type, sender_id, sender_name, mentions } = body
+    const { phase, content, author_type, author_id, author_name, mentions } = body
 
     if (!phase || !VALID_PHASES.has(phase)) {
       return NextResponse.json(
@@ -82,25 +82,27 @@ export async function POST(
       return NextResponse.json({ error: "content is required" }, { status: 400 })
     }
 
-    if (!sender_type || !sender_id || !sender_name) {
+    if (!author_type || !author_id || !author_name) {
       return NextResponse.json(
-        { error: "sender_type, sender_id, and sender_name are required" },
+        { error: "author_type, author_id, and author_name are required" },
         { status: 400 }
       )
     }
 
     const sb = getSupabase()
 
+    const mentionsArray = Array.isArray(mentions) ? mentions : []
+
     const { data, error } = await sb
       .from("phase_chat_messages")
       .insert({
         feature_id: featureId,
         phase,
-        sender_type,
-        sender_id,
-        sender_name,
+        author_type,
+        author_id,
+        author_name,
         content: content.trim(),
-        mentions: Array.isArray(mentions) ? mentions : [],
+        mentions: mentionsArray,
       })
       .select()
       .single()

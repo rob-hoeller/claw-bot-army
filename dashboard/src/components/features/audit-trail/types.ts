@@ -84,12 +84,15 @@ export interface PhaseChatMessage {
   id: string
   feature_id: string
   phase: "planning" | "review"
-  sender_type: "user" | "agent" | "orchestrator"
-  sender_id: string
-  sender_name: string
+  author_type: "user" | "agent" | "orchestrator"
+  author_id: string
+  author_name: string
+  author_avatar?: string | null
   content: string
   mentions: string[]
   created_at: string
+  edited_at?: string | null
+  handoff_packet_id?: string | null
 }
 
 export interface CreateHandoffPacketRequest {
