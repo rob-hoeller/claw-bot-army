@@ -16,7 +16,7 @@ interface UsePhaseChatMessagesReturn {
 
 export function usePhaseChatMessages(
   featureId: string,
-  phase: "planning" | "review"
+  phase: string
 ): UsePhaseChatMessagesReturn {
   const [messages, setMessages] = useState<PhaseChatMessage[]>([])
   const [loading, setLoading] = useState(true)
@@ -91,7 +91,7 @@ export function usePhaseChatMessages(
       const optimistic: PhaseChatMessage = {
         id: optimisticId,
         feature_id: featureId,
-        phase,
+        phase: phase as PhaseChatMessage["phase"],
         author_type: "human",
         author_id: authorId,
         author_name: authorName,

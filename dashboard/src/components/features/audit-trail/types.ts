@@ -83,8 +83,8 @@ export interface HandoffPacket {
 export interface PhaseChatMessage {
   id: string
   feature_id: string
-  phase: "planning" | "review"
-  author_type: "human" | "agent" | "orchestrator"
+  phase: "planning" | "design_review" | "in_progress" | "qa_review" | "review" | "approved" | "pr_submitted" | "done"
+  author_type: "human" | "agent" | "orchestrator" | "system"
   author_id: string
   author_name: string
   author_avatar?: string | null
