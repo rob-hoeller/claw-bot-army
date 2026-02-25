@@ -1,3 +1,4 @@
+MEMORY.md
 # Long-Term Memory: HBx
 
 > This file stores platform state, agent registry, and significant events.
@@ -33,7 +34,6 @@
 | Total Agents | 13 |
 | Active | 11 |
 | Deploying | 2 |
-| Inactive | 0 |
 | Issues | 0 |
 
 ---

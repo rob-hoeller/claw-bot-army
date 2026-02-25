@@ -104,7 +104,12 @@ export function useRealtimeFeatures() {
         { event: "*", schema: "public", table: "features" },
         (payload) => {
           if (payload.eventType === "INSERT") {
-            setFeatures((prev) => [payload.new as Feature, ...prev])
+            setFeatures((prev) => {
+              // Dedupe: skip if already added by optimistic onCreated callback
+              const incoming = payload.new as Feature
+              if (prev.some((f) => f.id === incoming.id)) return prev
+              return [incoming, ...prev]
+            })
             const f = payload.new as Feature
             setActivityLog((prev) =>
               [
