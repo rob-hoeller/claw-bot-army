@@ -11,7 +11,7 @@ function getSupabase() {
   return createClient(supabaseUrl, supabaseKey)
 }
 
-const VALID_PHASES = new Set(["planning", "review"])
+const VALID_PHASES = new Set(["planning", "design_review", "in_progress", "qa_review", "review", "approved", "pr_submitted", "done"])
 
 export async function GET(
   req: NextRequest,
@@ -22,7 +22,7 @@ export async function GET(
 
   if (!phase || !VALID_PHASES.has(phase)) {
     return NextResponse.json(
-      { error: "Invalid or missing phase query param. Must be 'planning' or 'review'." },
+      { error: "Invalid or missing phase query param." },
       { status: 400 }
     )
   }
@@ -73,7 +73,7 @@ export async function POST(
 
     if (!phase || !VALID_PHASES.has(phase)) {
       return NextResponse.json(
-        { error: "Invalid phase. Must be 'planning' or 'review'." },
+        { error: "Invalid phase." },
         { status: 400 }
       )
     }

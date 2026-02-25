@@ -120,7 +120,9 @@ export function StepPanelContent({
   const summary = activePacket?.output_summary || ""
   const truncated = summary.length > 300 && !showFull
 
-  const showChat = phase === "planning" || phase === "review"
+  const interactivePhases = new Set(["planning", "review"])
+  const showChat = true
+  const chatReadonly = !interactivePhases.has(phase)
   const showFeatureSpec = phase === "planning" && featureSpec
   const showDesignSpec = phase === "design_review" && designSpec
   const showAcceptanceCriteria = phase === "planning" && acceptanceCriteria
@@ -356,8 +358,9 @@ export function StepPanelContent({
       {showChat && (
         <PhaseChatPanel
           featureId={featureId}
-          phase={phase as "planning" | "review"}
+          phase={phase}
           agents={agents}
+          readonly={chatReadonly}
         />
       )}
 
