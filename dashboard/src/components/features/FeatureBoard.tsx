@@ -551,12 +551,16 @@ function CreateFeaturePanel({
     }
   }
 
-  const { userId: currentUserId } = useCurrentUser()
+  const { userId: currentUserId, userName: currentUserName } = useCurrentUser()
   const requestedBy = currentUserId ?? (agents.find(a => a.id === 'HBx')?.id ?? agents[0]?.id ?? null)
 
   const [savingPhase, setSavingPhase] = useState<'idle' | 'generating' | 'creating'>('idle')
 
   const handleCreateFromChat = async () => {
+    if (!currentUserId) {
+      setNotice({ type: 'info', message: "Please select your identity in the top-right corner before creating a feature." })
+      return
+    }
     if (saving) return
     setSaving(true)
     setSavingPhase('generating')
