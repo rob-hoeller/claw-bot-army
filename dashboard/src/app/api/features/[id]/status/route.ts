@@ -23,6 +23,41 @@ const VALID_STATUSES = [
   "cancelled",
 ]
 
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params
+
+  if (!supabaseUrl || !supabaseKey) {
+    return NextResponse.json(
+      { error: "Server misconfiguration: missing required environment variables" },
+      { status: 503 }
+    )
+  }
+
+  try {
+    const sb = getSupabase()
+    const { data: feature, error } = await sb
+      .from("features")
+      .select("*")
+      .eq("id", id)
+      .single()
+
+    if (error || !feature) {
+      return NextResponse.json({ error: "Feature not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({ feature })
+  } catch (err) {
+    console.error("[API] Feature fetch exception:", err)
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    )
+  }
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
