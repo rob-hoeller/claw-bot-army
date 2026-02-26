@@ -74,6 +74,8 @@ import { useHandoffPackets } from "@/hooks/useHandoffPackets"
 import { ClipboardList } from "lucide-react"
 import { PhaseChatPanel } from "./audit-trail/PhaseChatPanel"
 import { useCurrentUser } from "@/hooks/useCurrentUser"
+import { LivePipelineView } from "./LivePipelineView"
+import type { PipelineStepId } from "./pipeline.types"
 
 // ─── Types ───────────────────────────────────────────────────────
 type FeatureStatus =
@@ -907,6 +909,7 @@ function FeatureDetailPanel({
   const [selectedPhase, setSelectedPhase] = useState<string | null>(null)
   const [showReassign, setShowReassign] = useState(false)
   const [startingPipeline, setStartingPipeline] = useState(false)
+  const [selectedStepId, setSelectedStepId] = useState<PipelineStepId | undefined>(undefined)
   const chatEndRef = useRef<HTMLDivElement>(null)
   const { packets: handoffPackets, loading: handoffLoading } = useHandoffPackets(feature.id, activeTab === 'audit' || selectedPhase !== null)
 
@@ -1112,6 +1115,16 @@ function FeatureDetailPanel({
             </span>
           )}
         </div>
+      </div>
+
+      {/* Live Pipeline View - Always visible */}
+      <div className="flex-shrink-0 px-3 pb-3 border-b border-white/10 bg-gradient-to-b from-black/0 to-black/20">
+        <LivePipelineView
+          feature={feature}
+          isLoading={false}
+          selectedStepId={selectedStepId}
+          onStepClick={(stepId) => setSelectedStepId(stepId === selectedStepId ? undefined : stepId)}
+        />
       </div>
 
       {/* Tab Content — phase click overrides tab */}

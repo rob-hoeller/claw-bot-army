@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { motion } from "framer-motion"
 import {
   Users,
@@ -15,6 +16,8 @@ import { Badge } from "@/components/ui/badge"
 import CardSection from "@/components/CardSection"
 import PageHeader from "@/components/PageHeader"
 import PlatformMetrics from "@/components/PlatformMetrics"
+import { ActiveWorkflowsBoard } from "@/components/features/ActiveWorkflowsBoard"
+import { useRealtimeFeatures } from "@/hooks/useRealtimeFeatures"
 
 const stats = [
   {
@@ -97,6 +100,15 @@ const recentActivity = [
 ]
 
 export default function Dashboard() {
+  const { features, justMoved, isLoading } = useRealtimeFeatures()
+  const [selectedFeatureId, setSelectedFeatureId] = useState<string | undefined>(undefined)
+
+  const handleSelectFeature = (featureId: string) => {
+    setSelectedFeatureId(featureId)
+    // TODO: Add navigation to feature detail or open a modal
+    console.log("Selected feature:", featureId)
+  }
+
   return (
     <div>
       <PageHeader
@@ -134,6 +146,17 @@ export default function Dashboard() {
       {/* Platform Metrics */}
       <div className="mb-8">
         <PlatformMetrics />
+      </div>
+
+      {/* Active Workflows Board */}
+      <div className="mb-8">
+        <ActiveWorkflowsBoard
+          features={features}
+          justMoved={justMoved}
+          isLoading={isLoading}
+          onSelectFeature={handleSelectFeature}
+          activeFeatureId={selectedFeatureId}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">

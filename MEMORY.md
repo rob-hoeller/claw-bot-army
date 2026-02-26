@@ -1,9 +1,8 @@
-MEMORY.md
 # Long-Term Memory: HBx
 
 > This file stores platform state, agent registry, and significant events.
 > Agent registry is **dynamically generated** from Supabase (single source of truth).
-> Last synced: 2026-02-24T23:26:18Z
+> Last synced: 2026-02-26T03:26:19Z
 
 ---
 
@@ -34,6 +33,7 @@ MEMORY.md
 | Total Agents | 13 |
 | Active | 11 |
 | Deploying | 2 |
+| Inactive | 0 |
 | Issues | 0 |
 
 ---
