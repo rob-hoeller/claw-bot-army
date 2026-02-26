@@ -3,13 +3,14 @@
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { ChevronDown, ChevronRight } from "lucide-react"
+import { formatStageLabel } from "./pipeline-utils"
 
 // ─── Types ───────────────────────────────────────────────────────
 
 export interface PipelineLogEntry {
   timestamp: string
   agent: string
-  stage: string
+  stage?: string | null
   verdict: string
   issues?: string[]
   revision_loop?: number
@@ -103,7 +104,9 @@ export function PipelineLog({ log }: PipelineLogProps) {
               color: "bg-white/10 text-white/60",
               icon: "•",
             }
-            const stageIcon = stageIcons[entry.stage] || "⚡"
+            const stageKey = typeof entry.stage === "string" ? entry.stage.toLowerCase() : ""
+            const stageIcon = stageIcons[stageKey] || "⚡"
+            const stageLabel = formatStageLabel(entry.stage)
             const hasIssues = entry.verdict === "REVISE" && entry.issues && entry.issues.length > 0
             const issuesOpen = expandedIssues.has(idx)
 
@@ -115,7 +118,7 @@ export function PipelineLog({ log }: PipelineLogProps) {
                   </span>
                   <span>{stageIcon}</span>
                   <span className="text-white/60 flex-1 truncate">
-                    {entry.agent} — {entry.stage.charAt(0).toUpperCase() + entry.stage.slice(1)}
+                    {entry.agent} — {stageLabel}
                     {entry.revision_loop ? ` (rev ${entry.revision_loop})` : ""}
                   </span>
                   <span

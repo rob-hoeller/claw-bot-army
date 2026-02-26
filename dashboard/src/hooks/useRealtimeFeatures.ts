@@ -41,7 +41,7 @@ export interface Feature {
   pipeline_log: Array<{
     timestamp: string
     agent: string
-    stage: string
+    stage?: string | null
     verdict: string
     issues?: string[]
     revision_loop?: number

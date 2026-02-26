@@ -212,6 +212,15 @@ export function formatElapsedTime(ms: number | null): string {
   return `${seconds}s`
 }
 
+// ─── Helper: Format Stage Label ──────────────────────────────────────────────
+
+export function formatStageLabel(stage?: string | null): string {
+  if (typeof stage !== "string") return "Unknown"
+  const trimmed = stage.trim()
+  if (!trimmed) return "Unknown"
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1)
+}
+
 // ─── Helper: Generate Agent Chain Summary ───────────────────────────────────
 
 /**
