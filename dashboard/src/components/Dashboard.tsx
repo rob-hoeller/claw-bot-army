@@ -11,6 +11,8 @@ import {
   Clock,
   CheckCircle2,
   AlertTriangle,
+  Rocket,
+  ArrowRight,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import CardSection from "@/components/CardSection"
@@ -99,9 +101,23 @@ const recentActivity = [
   },
 ]
 
-export default function Dashboard() {
+interface DashboardProps {
+  onNavigate?: (page: string) => void
+}
+
+export default function Dashboard({ onNavigate }: DashboardProps = {}) {
   const { features, justMoved, isLoading } = useRealtimeFeatures()
   const [selectedFeatureId, setSelectedFeatureId] = useState<string | undefined>(undefined)
+
+  // Calculate Mission Control metrics
+  const activeMissions = features.filter(
+    (f) => f.current_agent && f.status !== "done" && f.status !== "cancelled"
+  ).length
+  
+  const needsAttention = features.filter(
+    // @ts-ignore - needs_attention may not be in type yet
+    (f) => f.needs_attention === true
+  ).length
 
   const handleSelectFeature = (featureId: string) => {
     setSelectedFeatureId(featureId)
@@ -147,6 +163,51 @@ export default function Dashboard() {
       <div className="mb-8">
         <PlatformMetrics />
       </div>
+
+      {/* Mission Control Quick Access */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        className="mb-8 rounded-xl border border-white/5 bg-gradient-to-br from-blue-500/5 to-purple-500/5 p-6"
+      >
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="rounded-lg bg-blue-500/10 p-2.5">
+              <Rocket className="h-6 w-6 text-blue-400" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-white">Mission Control</h3>
+              <p className="text-sm text-white/50">Live pipeline monitoring</p>
+            </div>
+          </div>
+          {onNavigate && (
+            <button
+              onClick={() => onNavigate("mission-control")}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-sm font-medium text-white transition-all"
+            >
+              Open
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="rounded-lg bg-white/[0.02] border border-white/5 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Activity className="h-4 w-4 text-blue-400" />
+              <span className="text-xs text-white/50">Active Missions</span>
+            </div>
+            <p className="text-2xl font-semibold text-white">{activeMissions}</p>
+          </div>
+          <div className="rounded-lg bg-white/[0.02] border border-white/5 p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-400" />
+              <span className="text-xs text-white/50">Needs Attention</span>
+            </div>
+            <p className="text-2xl font-semibold text-white">{needsAttention}</p>
+          </div>
+        </div>
+      </motion.div>
 
       {/* Active Workflows Board */}
       <div className="mb-8">

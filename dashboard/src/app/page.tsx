@@ -14,6 +14,7 @@ import { FeatureBoard } from "@/components/features"
 import { MonitoringPage } from "@/components/MonitoringPage"
 import { TokenUsagePage } from "@/components/TokenUsagePage"
 import { OrchestratorPanel } from "@/components/orchestrator"
+import MissionControl from "@/components/mission/MissionControl"
 import { Loader2 } from "lucide-react"
 
 // Placeholder pages for navigation
@@ -142,7 +143,13 @@ export default function Home() {
   const renderPage = () => {
     switch (currentPage) {
       case "dashboard":
-        return <Dashboard />
+        return <Dashboard onNavigate={setCurrentPage} />
+      case "mission-control":
+        return (
+          <div className="h-[calc(100vh-8rem)]">
+            <MissionControl className="h-full" />
+          </div>
+        )
       case "network":
         return (
           <div className="h-[calc(100vh-8rem)]">
