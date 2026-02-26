@@ -149,26 +149,47 @@ interface PipelineConnectorProps {
 }
 
 function PipelineConnector({ state }: PipelineConnectorProps) {
-  const lineColor =
-    state === "completed"
-      ? "bg-green-400"
-      : state === "active"
-        ? "bg-amber-400"
-        : "bg-white/20"
-
+  // Completed: solid green
+  if (state === "completed") {
+    return (
+      <div className="flex items-center justify-center flex-shrink-0 w-12">
+        <div className="h-[3px] w-full bg-green-400 rounded-sm" />
+      </div>
+    )
+  }
+  
+  // Active: animated gradient
+  if (state === "active") {
+    return (
+      <div className="flex items-center justify-center flex-shrink-0 w-12">
+        <motion.div
+          className="h-[3px] w-full rounded-sm"
+          style={{
+            background: "linear-gradient(90deg, #fbbf24 0%, #14b8a6 50%, #fbbf24 100%)",
+            backgroundSize: "200% 100%",
+          }}
+          animate={{
+            backgroundPosition: ["0% 0%", "100% 0%"],
+          }}
+          transition={{
+            duration: 2,
+            repeat: Infinity,
+            ease: "linear",
+          }}
+        />
+      </div>
+    )
+  }
+  
+  // Pending: dotted gray
   return (
     <div className="flex items-center justify-center flex-shrink-0 w-12">
-      <div className="relative h-0.5 w-full">
-        <div className={cn("h-full", lineColor)} />
-        {state === "active" && (
-          <motion.div
-            className="absolute inset-0 h-full bg-amber-400"
-            initial={{ width: "0%" }}
-            animate={{ width: "100%" }}
-            transition={{ duration: 2, repeat: Infinity }}
-          />
-        )}
-      </div>
+      <div
+        className="h-[2px] w-full"
+        style={{
+          backgroundImage: "repeating-linear-gradient(to right, #475569 0px, #475569 4px, transparent 4px, transparent 8px)",
+        }}
+      />
     </div>
   )
 }

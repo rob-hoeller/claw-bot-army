@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import { cn } from "@/lib/utils"
 import { Inbox } from "lucide-react"
 import type { ActiveWorkflowsBoardProps } from "./pipeline.types"
@@ -44,6 +44,8 @@ export function ActiveWorkflowsBoard({
   activeFeatureId,
   className,
 }: ActiveWorkflowsBoardProps) {
+  const [expandedFeatureId, setExpandedFeatureId] = useState<string | null>(null)
+
   // Apply default filter if not provided
   const excludeStatuses = filter?.excludeStatuses || ["done", "cancelled"]
   const agentFilter = filter?.agentId
@@ -121,7 +123,15 @@ export function ActiveWorkflowsBoard({
             feature={feature}
             steps={steps}
             isJustMoved={justMoved.has(feature.id)}
-            onClick={onSelectFeature}
+            onClick={(featureId) => {
+              // Toggle expansion
+              setExpandedFeatureId((prev) =>
+                prev === featureId ? null : featureId
+              )
+              // Also call parent handler
+              onSelectFeature(featureId)
+            }}
+            isExpanded={expandedFeatureId === feature.id}
           />
         ))}
       </div>

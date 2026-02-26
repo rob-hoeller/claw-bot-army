@@ -217,6 +217,10 @@ export interface WorkflowCardProps {
    * real data.
    */
   isLoading?: boolean
+  /**
+   * When true, expands the card to show the PipelineTerminal inline.
+   */
+  isExpanded?: boolean
 }
 
 // ─── ActiveWorkflowsBoard ────────────────────────────────────────────────────
