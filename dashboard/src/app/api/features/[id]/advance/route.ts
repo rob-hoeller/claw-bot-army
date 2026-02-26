@@ -41,7 +41,7 @@ export async function POST(
     // Use pipeline engine to advance
     const result = await advanceFeature(id, body.verdict, body.notes)
 
-    if (!result.success) {
+    if (!result.success || !result.feature) {
       return NextResponse.json(
         { error: result.error || "Failed to advance feature" },
         { status: 500 }

@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { AnimatePresence } from "framer-motion"
+import { toast } from "sonner"
 import { CommandBar } from "./CommandBar"
 import { MissionFeed } from "./MissionFeed"
 import { MissionDetailPanel } from "./MissionDetailPanel"
 import { useMissionFeed } from "@/hooks/useMissionFeed"
+import { submitFeature, startPipeline, handleApiError } from "@/lib/api-client"
 import type { MissionControlProps } from "./mission.types"
 import { cn } from "@/lib/utils"
 
@@ -87,25 +89,27 @@ export default function MissionControl({ className }: MissionControlProps) {
     setIsSubmitting(true)
 
     try {
-      const response = await fetch("/api/features", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      })
+      // Step 1: Create the feature
+      const feature = await submitFeature(data)
+      
+      toast.success("Feature created successfully")
 
-      if (!response.ok) {
-        throw new Error("Failed to create feature")
-      }
-
-      const result = await response.json()
-
-      // Auto-select the newly created feature
-      if (result.id) {
-        setSelectedFeatureId(result.id)
+      // Step 2: Start the pipeline
+      try {
+        await startPipeline(feature.id)
+        toast.success("Pipeline started - IN1 (Architect) is now working")
+        
+        // Auto-select the newly created feature
+        setSelectedFeatureId(feature.id)
+      } catch (pipelineError) {
+        console.error("Failed to start pipeline:", pipelineError)
+        toast.error("Feature created, but failed to start pipeline")
+        // Still select the feature so user can manually trigger
+        setSelectedFeatureId(feature.id)
       }
     } catch (error) {
-      console.error("Failed to submit feature:", error)
-      alert("Failed to create feature. Please try again.")
+      handleApiError(error)
+      toast.error("Failed to create feature. Please try again.")
     } finally {
       setIsSubmitting(false)
     }

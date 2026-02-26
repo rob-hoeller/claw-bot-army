@@ -3,17 +3,17 @@
 import { useState } from "react"
 import { motion } from "framer-motion"
 import { X } from "lucide-react"
+import { toast } from "sonner"
 import type { MissionDetailPanelProps, MissionDetailTab, AttentionType } from "./mission.types"
 import { cn } from "@/lib/utils"
 import { AgentActivityStream } from "./AgentActivityStream"
 import { HumanGate } from "./HumanGate"
-// Import existing components (assumed to exist)
-// @ts-ignore - These may need path adjustments
+import { submitVerdict, handleApiError } from "@/lib/api-client"
+import { useHandoffPackets } from "@/hooks/useHandoffPackets"
+// Import existing components
 import { LivePipelineView } from "../features/LivePipelineView"
-// @ts-ignore
-import { PhaseChatPanel } from "../chat/PhaseChatPanel"
-// @ts-ignore
-import { AuditTrailTab } from "../audit/AuditTrailTab"
+import { PhaseChatPanel } from "../features/audit-trail/PhaseChatPanel"
+import { AuditTrailTab } from "../features/audit-trail/AuditTrailTab"
 
 /**
  * MissionDetailPanel
@@ -32,53 +32,40 @@ export function MissionDetailPanel({ feature, onClose, className }: MissionDetai
   // @ts-ignore - attention_type may not be in type yet
   const attentionType: AttentionType = feature.attention_type || "review"
 
+  // Fetch handoff packets for audit trail
+  const { packets, loading: packetsLoading } = useHandoffPackets(
+    feature.id,
+    activeTab === "audit"
+  )
+
   const handleApprove = async () => {
-    // TODO: Call API to approve and advance pipeline
     try {
-      const response = await fetch(`/api/features/${feature.id}/review-verdict`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ verdict: "approve" }),
-      })
-
-      if (!response.ok) throw new Error("Failed to approve")
-
+      await submitVerdict(feature.id, "approve")
+      toast.success("Feature approved - proceeding to next phase")
       // Success feedback handled by realtime update
     } catch (error) {
-      console.error("Failed to approve:", error)
-      alert("Failed to approve. Please try again.")
+      handleApiError(error)
+      toast.error("Failed to approve. Please try again.")
     }
   }
 
   const handleRevise = async (feedback?: string) => {
-    // TODO: Call API to request revisions
     try {
-      const response = await fetch(`/api/features/${feature.id}/review-verdict`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ verdict: "revise", feedback }),
-      })
-
-      if (!response.ok) throw new Error("Failed to request revision")
+      await submitVerdict(feature.id, "revise", feedback)
+      toast.success("Revision requested - returning to previous phase")
     } catch (error) {
-      console.error("Failed to request revision:", error)
-      alert("Failed to submit feedback. Please try again.")
+      handleApiError(error)
+      toast.error("Failed to request revision. Please try again.")
     }
   }
 
   const handleEscalate = async (reason?: string) => {
-    // TODO: Call API to escalate
     try {
-      const response = await fetch(`/api/features/${feature.id}/escalate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason }),
-      })
-
-      if (!response.ok) throw new Error("Failed to escalate")
+      await submitVerdict(feature.id, "reject", reason)
+      toast.warning("Feature escalated for review")
     } catch (error) {
-      console.error("Failed to escalate:", error)
-      alert("Failed to escalate. Please try again.")
+      handleApiError(error)
+      toast.error("Failed to escalate. Please try again.")
     }
   }
 
@@ -164,13 +151,25 @@ export function MissionDetailPanel({ feature, onClose, className }: MissionDetai
 
         {activeTab === "chat" && (
           <div className="h-full">
-            <PhaseChatPanel featureId={feature.id} />
+            <PhaseChatPanel 
+              featureId={feature.id}
+              phase={feature.status}
+              agents={[
+                { id: feature.current_agent || "HBx", name: feature.current_agent || "HBx", emoji: "🤖" }
+              ]}
+            />
           </div>
         )}
 
         {activeTab === "audit" && (
           <div className="h-full overflow-y-auto p-4">
-            <AuditTrailTab feature={feature} />
+            <AuditTrailTab 
+              featureId={feature.id}
+              featureStatus={feature.status}
+              packets={packets}
+              loading={packetsLoading}
+              approvedBy={feature.approved_by}
+            />
           </div>
         )}
       </div>

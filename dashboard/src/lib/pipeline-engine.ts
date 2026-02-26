@@ -28,6 +28,61 @@ export interface PipelineStep {
 }
 
 /**
+ * Feature database record type
+ */
+export interface FeatureRecord {
+  id: string
+  title: string
+  description: string | null
+  status: FeatureStatus
+  priority: "low" | "medium" | "high" | "urgent"
+  current_step: PipelineStepId | null
+  current_agent: string | null
+  needs_attention: boolean
+  attention_type: "review" | "error" | null
+  revision_count: number
+  pipeline_log: Array<{
+    step: string
+    verdict: string
+    timestamp: string
+    notes?: string | null
+    revision_count?: number
+  }>
+  created_at: string
+  updated_at: string
+  [key: string]: unknown
+}
+
+/**
+ * Feature update object for Supabase
+ */
+export interface FeatureUpdate {
+  status?: FeatureStatus
+  current_step?: PipelineStepId | null
+  current_agent?: string | null
+  needs_attention?: boolean
+  attention_type?: "review" | "error" | null
+  revision_count?: number
+  pipeline_log?: Array<{
+    step: string
+    verdict: string
+    timestamp: string
+    notes?: string | null
+    revision_count?: number
+  }>
+  updated_at: string
+}
+
+/**
+ * Return type for advanceFeature function
+ */
+export interface AdvanceFeatureResult {
+  success: boolean
+  feature?: FeatureRecord
+  error?: string
+}
+
+/**
  * Ordered pipeline steps
  */
 export const PIPELINE_STEPS: PipelineStep[] = [
@@ -119,7 +174,7 @@ export async function advanceFeature(
   featureId: string,
   verdict: "approve" | "revise" | "reject",
   notes?: string
-): Promise<{ success: boolean; feature?: any; error?: string }> {
+): Promise<AdvanceFeatureResult> {
   try {
     const sb = createClient(supabaseUrl, supabaseKey)
 
@@ -141,7 +196,7 @@ export async function advanceFeature(
       return { success: false, error: "Invalid current step" }
     }
 
-    let updates: any = {
+    let updates: FeatureUpdate = {
       updated_at: new Date().toISOString(),
     }
 

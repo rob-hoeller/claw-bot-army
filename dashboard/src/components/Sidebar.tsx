@@ -17,6 +17,7 @@ import {
   Activity,
   Coins,
   Network,
+  Rocket,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -31,6 +32,7 @@ interface SidebarProps {
 
 const navItems = [
   { id: "dashboard", label: "Command Center", icon: LayoutDashboard },
+  { id: "mission-control", label: "Mission Control", icon: Rocket },
   { id: "network", label: "Agent Network", icon: Network },
   { id: "agents", label: "Agents", icon: Bot },
   { id: "monitoring", label: "Monitoring", icon: Activity },
