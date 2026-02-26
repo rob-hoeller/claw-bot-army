@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { AnimatePresence } from "framer-motion"
 import { toast } from "sonner"
-import { CommandBar } from "./CommandBar"
+import { CommandCenter } from "@/components/command-center/CommandCenter"
 import { MissionFeed } from "./MissionFeed"
 import { MissionDetailPanel } from "./MissionDetailPanel"
 import { useMissionFeed } from "@/hooks/useMissionFeed"
@@ -81,16 +81,16 @@ export default function MissionControl({ className }: MissionControlProps) {
     return () => window.removeEventListener("keydown", handleKeyDown)
   }, [allFeatures, selectedFeatureId])
 
-  const handleSubmitFeature = async (data: {
-    title: string
-    description: string
-    priority: "low" | "medium" | "high" | "urgent"
-  }) => {
+  const handleCreateFeature = async (title: string, description: string, priority: string) => {
     setIsSubmitting(true)
 
     try {
       // Step 1: Create the feature
-      const feature = await submitFeature(data)
+      const feature = await submitFeature({
+        title,
+        description,
+        priority: priority as "low" | "medium" | "high" | "urgent"
+      })
       
       toast.success("Feature created successfully")
 
@@ -117,9 +117,9 @@ export default function MissionControl({ className }: MissionControlProps) {
 
   return (
     <div className={cn("h-screen flex flex-col bg-slate-950", className)}>
-      {/* Command Bar */}
-      <div className="border-b border-white/10">
-        <CommandBar onSubmit={handleSubmitFeature} isSubmitting={isSubmitting} />
+      {/* Command Center */}
+      <div className="border-b border-white/10 p-2">
+        <CommandCenter onCreateFeature={handleCreateFeature} />
       </div>
 
       {/* Two-panel layout */}
