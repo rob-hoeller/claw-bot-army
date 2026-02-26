@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import { Check, Loader2, Circle, Inbox, FileText, Palette, Hammer, FlaskConical, Rocket } from "lucide-react"
 import type { WorkflowCardProps, PipelineStepStatus, TerminalLine } from "./pipeline.types"
 import { Skeleton } from "@/components/shared/Skeletons"
-import { generateAgentChainSummary } from "./pipeline-utils"
+import { formatStageLabel, generateAgentChainSummary } from "./pipeline-utils"
 import { PipelineTerminal } from "./PipelineTerminal"
 import { useMemo } from "react"
 
@@ -316,7 +316,7 @@ export function WorkflowCard({
       key: `${idx}-${entry.timestamp}`,
       timestamp: entry.timestamp,
       agent: entry.agent,
-      action: `${entry.stage.charAt(0).toUpperCase() + entry.stage.slice(1)}`,
+      action: formatStageLabel(entry.stage),
       verdict: entry.verdict,
       details: entry.issues || [],
       revisionLoop: entry.revision_loop,

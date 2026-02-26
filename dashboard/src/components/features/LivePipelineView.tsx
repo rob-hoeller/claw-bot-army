@@ -11,7 +11,7 @@ import type {
   TerminalLine,
   PipelineStepId,
 } from "./pipeline.types"
-import { derivePipelineSteps, formatElapsedTime } from "./pipeline-utils"
+import { derivePipelineSteps, formatElapsedTime, formatStageLabel } from "./pipeline-utils"
 import { PipelineTerminal } from "./PipelineTerminal"
 import { Skeleton } from "@/components/shared/Skeletons"
 
@@ -233,7 +233,7 @@ export function LivePipelineView({
       key: `${idx}-${entry.timestamp}`,
       timestamp: entry.timestamp,
       agent: entry.agent,
-      action: `${entry.stage.charAt(0).toUpperCase() + entry.stage.slice(1)}`,
+      action: formatStageLabel(entry.stage),
       verdict: entry.verdict,
       details: entry.issues || [],
       revisionLoop: entry.revision_loop,
