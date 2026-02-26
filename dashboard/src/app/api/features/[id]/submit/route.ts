@@ -114,6 +114,24 @@ export async function POST(
 
     await sb.from("agent_activity").insert(activityPayload)
 
+    // Trigger the pipeline to start processing
+    try {
+      const runPipelineUrl = new URL(`/api/features/${id}/run-pipeline`, req.url)
+      
+      // Fire and forget - don't wait for pipeline to complete
+      fetch(runPipelineUrl.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      }).catch((err) => {
+        console.error("Failed to trigger pipeline:", err)
+      })
+    } catch (pipelineError) {
+      console.error("Error starting pipeline:", pipelineError)
+      // Don't fail the submission if pipeline trigger fails
+    }
+
     return NextResponse.json({ feature }, { status: 200 })
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error"

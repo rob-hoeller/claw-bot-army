@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { PIPELINE_STEPS, getNextStep, getPrevBuildStep, calculateStatus } from "@/lib/pipeline-engine"
+import { PIPELINE_STEPS } from "@/lib/pipeline-engine"
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -72,83 +72,6 @@ export async function POST(
       )
     }
 
-    let updates: any = {
-      updated_at: new Date().toISOString(),
-    }
-
-    let activityContent = ""
-    let activityEventType: "gate" | "revision" | "decision" = "gate"
-
-    // Handle verdict logic
-    if (body.verdict === "approve") {
-      updates.needs_attention = false
-      updates.attention_type = null
-
-      // Special handling for spec phase → advance to design
-      if (currentStepId === "spec") {
-        const nextStep = getNextStep("spec")
-        if (nextStep) {
-          updates.current_step = nextStep.id
-          updates.current_agent = nextStep.agent
-          updates.status = calculateStatus(nextStep.id)
-          activityContent = `Spec approved. Advancing to ${nextStep.label}`
-        }
-      }
-      // Special handling for ship phase → trigger PR creation
-      else if (currentStepId === "ship") {
-        updates.status = "pr_submitted"
-        activityContent = "Final review approved. Ready for PR creation."
-        // TODO: Trigger PR creation workflow
-      }
-      // Generic approval
-      else {
-        const nextStep = getNextStep(currentStepId as any)
-        if (nextStep) {
-          updates.current_step = nextStep.id
-          updates.current_agent = nextStep.agent
-          updates.status = calculateStatus(nextStep.id)
-          activityContent = `Approved. Advancing to ${nextStep.label}`
-        } else {
-          updates.status = "done"
-          activityContent = "Final approval. Feature complete."
-        }
-      }
-
-      activityEventType = "gate"
-    } else if (body.verdict === "revise") {
-      updates.needs_attention = false
-      updates.attention_type = null
-
-      // Return to previous build step
-      const prevStep = getPrevBuildStep(currentStepId as any)
-      if (prevStep) {
-        updates.current_step = prevStep.id
-        updates.current_agent = prevStep.agent
-        updates.status = calculateStatus(prevStep.id)
-      }
-
-      // Increment revision count
-      const revisionCount = (feature.revision_count || 0) + 1
-      updates.revision_count = revisionCount
-
-      if (revisionCount > 2) {
-        // Max revisions exceeded - escalate
-        updates.needs_attention = true
-        updates.attention_type = "error"
-        activityContent = `Revision requested (attempt ${revisionCount}). Max revisions exceeded - escalating.`
-      } else {
-        activityContent = `Revision requested (attempt ${revisionCount}). Returning to ${prevStep?.label || "previous step"}.`
-      }
-
-      activityEventType = "revision"
-    } else if (body.verdict === "reject") {
-      updates.status = "cancelled"
-      updates.needs_attention = true
-      updates.attention_type = "error"
-      activityContent = "Feature rejected. Cancelled."
-      activityEventType = "decision"
-    }
-
     // Append to pipeline_log
     const pipelineLog = feature.pipeline_log || []
     pipelineLog.push({
@@ -156,9 +79,45 @@ export async function POST(
       verdict: body.verdict,
       timestamp: new Date().toISOString(),
       feedback: body.feedback || null,
-      revision_count: updates.revision_count || feature.revision_count || 0,
     })
-    updates.pipeline_log = pipelineLog
+
+    let updates: any = {
+      pipeline_log: pipelineLog,
+      updated_at: new Date().toISOString(),
+    }
+
+    let activityContent = ""
+    let activityEventType: "gate" | "decision" = "gate"
+
+    // Handle verdict logic
+    if (body.verdict === "approve") {
+      // Clear the gate flag - auto-advance will handle progression
+      updates.needs_attention = false
+      updates.attention_type = null
+
+      if (currentStepId === "ship") {
+        // Special case: ship approval means done
+        updates.status = "pr_submitted"
+        activityContent = "Final review approved. Ready for PR creation."
+      } else {
+        activityContent = `${currentStep.label} approved. Advancing pipeline...`
+      }
+
+      activityEventType = "gate"
+    } else if (body.verdict === "revise") {
+      // For revise, we'd need to go back, but for now just mark as needing attention
+      updates.needs_attention = true
+      updates.attention_type = "error"
+      updates.revision_count = (feature.revision_count || 0) + 1
+      activityContent = `Revision requested at ${currentStep.label}.`
+      activityEventType = "decision"
+    } else if (body.verdict === "reject") {
+      updates.status = "cancelled"
+      updates.needs_attention = true
+      updates.attention_type = "error"
+      activityContent = "Feature rejected. Cancelled."
+      activityEventType = "decision"
+    }
 
     // Update feature
     const { data: updatedFeature, error: updateError } = await sb
@@ -178,16 +137,36 @@ export async function POST(
     // Write activity event
     await sb.from("agent_activity").insert({
       feature_id: id,
-      agent_id: feature.current_agent || "system",
+      agent_id: feature.current_agent || "HBx",
       step_id: currentStepId,
       event_type: activityEventType,
+      action_type: activityEventType,
       content: activityContent,
       metadata: {
         verdict: body.verdict,
         feedback: body.feedback || null,
-        revision_count: updates.revision_count || feature.revision_count || 0,
       },
     })
+
+    // If approved and not at ship, trigger auto-advance to continue pipeline
+    if (body.verdict === "approve" && currentStepId !== "ship") {
+      try {
+        const autoAdvanceUrl = new URL(`/api/features/${id}/auto-advance`, req.url)
+        
+        // Fire and forget - don't wait for pipeline to complete
+        fetch(autoAdvanceUrl.toString(), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }).catch((err) => {
+          console.error("Failed to trigger auto-advance:", err)
+        })
+      } catch (advanceError) {
+        console.error("Error triggering auto-advance:", advanceError)
+        // Don't fail the review if auto-advance trigger fails
+      }
+    }
 
     return NextResponse.json({ feature: updatedFeature }, { status: 200 })
   } catch (err) {

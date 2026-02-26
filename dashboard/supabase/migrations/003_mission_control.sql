@@ -14,10 +14,15 @@ CREATE INDEX IF NOT EXISTS idx_activity_feature ON agent_activity(feature_id, cr
 CREATE INDEX IF NOT EXISTS idx_activity_agent ON agent_activity(agent_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_step ON agent_activity(feature_id, step_id);
 
--- 3. Feature attention gates
+-- 3. Feature pipeline tracking
+ALTER TABLE features ADD COLUMN IF NOT EXISTS current_step TEXT; -- 'intake' | 'spec' | 'design' | 'build' | 'qa' | 'ship'
+ALTER TABLE features ADD COLUMN IF NOT EXISTS pipeline_log JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE features ADD COLUMN IF NOT EXISTS revision_count INTEGER DEFAULT 0;
+
+-- 4. Feature attention gates
 ALTER TABLE features ADD COLUMN IF NOT EXISTS needs_attention BOOLEAN DEFAULT false;
 ALTER TABLE features ADD COLUMN IF NOT EXISTS attention_type TEXT; -- 'review' | 'approve' | 'error'
 ALTER TABLE features ADD COLUMN IF NOT EXISTS vercel_deploy_url TEXT;
 
--- 4. Enable realtime on agent_activity
+-- 5. Enable realtime on agent_activity
 ALTER PUBLICATION supabase_realtime ADD TABLE agent_activity;
