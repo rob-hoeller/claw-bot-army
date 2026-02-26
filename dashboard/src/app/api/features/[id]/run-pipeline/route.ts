@@ -51,8 +51,7 @@ const STEP_ACTIVITIES: Record<PipelineStepId, Array<{ type: string; content: str
     { type: "thinking", content: "Checking accessibility compliance (WCAG AA)...", delayMs: 1600 },
     { type: "thinking", content: "Verifying responsive layout on mobile/tablet/desktop...", delayMs: 1800 },
     { type: "thinking", content: "Testing loading, error, and empty states...", delayMs: 1400 },
-    { type: "decision", content: "QA PASSED — 0 issues found. Ready for final review.", delayMs: 1000 },
-    { type: "handoff", content: "QA complete. Handoff to Ship (HBx).", delayMs: 500 },
+    // QA verdict is now handled dynamically in runStep based on revision logic
   ],
   ship: [
     { type: "thinking", content: "Creating feature branch...", delayMs: 1200 },
@@ -66,8 +65,7 @@ const STEP_ACTIVITIES: Record<PipelineStepId, Array<{ type: string; content: str
     { type: "thinking", content: "Pushing to origin...", delayMs: 1400 },
     { type: "command", content: "Running `git push origin feat/{feature_slug}`...", delayMs: 1500 },
     { type: "result", content: "✅ Pushed to remote", delayMs: 700 },
-    { type: "thinking", content: "Preparing pull request...", delayMs: 1000 },
-    { type: "gate", content: "Ready for final review. Awaiting approval to create PR.", delayMs: 500 },
+    // Vercel deploy and PR creation handled in runShipStep
   ],
 }
 
@@ -119,6 +117,39 @@ function slugify(text: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
+    .slice(0, 50) // Max 50 chars for branch names
+}
+
+/**
+ * Generate a deterministic hash from a string for reproducible randomness
+ */
+function simpleHash(str: string): number {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash // Convert to 32bit integer
+  }
+  return Math.abs(hash)
+}
+
+/**
+ * Check if QA should find issues based on feature title hash (deterministic)
+ * Returns true 20% of the time
+ */
+function shouldQAFindIssues(featureTitle: string): boolean {
+  const hash = simpleHash(featureTitle)
+  return (hash % 100) < 20 // 20% chance
+}
+
+/**
+ * Generate mock issues for QA revision
+ */
+function generateQAIssues(): string[] {
+  return [
+    "Missing error state for network failures",
+    "Button hover states not aligned with design system"
+  ]
 }
 
 /**
@@ -155,12 +186,157 @@ async function writeActivity(
 
 /**
  * Run all activities for a single pipeline step
+ * Returns true if step completed successfully, false if needs revision
  */
-async function runStep(sb: any, feature: any, stepId: PipelineStepId): Promise<void> {
+async function runStep(
+  sb: any,
+  feature: any,
+  stepId: PipelineStepId
+): Promise<{ success: boolean; needsRevision: boolean }> {
   const activities = STEP_ACTIVITIES[stepId]
+  
+  // Run all activities
   for (const activity of activities) {
     await writeActivity(sb, feature.id, stepId, activity, feature)
   }
+
+  // Special handling for QA step - check for revisions
+  if (stepId === "qa") {
+    const revisionCount = feature.revision_count || 0
+    const shouldRevise = shouldQAFindIssues(feature.title)
+
+    if (shouldRevise && revisionCount < 2) {
+      // QA found issues, needs revision
+      const issues = generateQAIssues()
+      
+      await writeActivity(sb, feature.id, stepId, {
+        type: "decision",
+        content: `❌ QA FAILED — Found ${issues.length} issues`,
+        delayMs: 1000,
+      }, feature)
+
+      for (const issue of issues) {
+        await writeActivity(sb, feature.id, stepId, {
+          type: "thinking",
+          content: `• ${issue}`,
+          delayMs: 500,
+        }, feature)
+      }
+
+      await writeActivity(sb, feature.id, stepId, {
+        type: "revision",
+        content: "Returning to Build for revision...",
+        delayMs: 800,
+      }, feature)
+
+      return { success: false, needsRevision: true }
+    } else if (shouldRevise && revisionCount >= 2) {
+      // Max revisions reached, escalate
+      await writeActivity(sb, feature.id, stepId, {
+        type: "decision",
+        content: "❌ QA FAILED — Found issues after 2 revisions",
+        delayMs: 1000,
+      }, feature)
+
+      await writeActivity(sb, feature.id, stepId, {
+        type: "gate",
+        content: "Max revisions reached. Escalating to human review.",
+        delayMs: 1000,
+      }, feature)
+
+      return { success: false, needsRevision: false }
+    } else {
+      // QA passed
+      await writeActivity(sb, feature.id, stepId, {
+        type: "decision",
+        content: "✅ QA PASSED — 0 issues found. Ready for final review.",
+        delayMs: 1000,
+      }, feature)
+
+      await writeActivity(sb, feature.id, stepId, {
+        type: "handoff",
+        content: "QA complete. Handoff to Ship (HBx).",
+        delayMs: 500,
+      }, feature)
+    }
+  }
+
+  return { success: true, needsRevision: false }
+}
+
+/**
+ * Run ship step with Vercel deploy and PR creation
+ */
+async function runShipStep(sb: any, feature: any): Promise<void> {
+  const stepId = "ship"
+  const activities = STEP_ACTIVITIES[stepId]
+  
+  // Run initial ship activities
+  for (const activity of activities) {
+    await writeActivity(sb, feature.id, stepId, activity, feature)
+  }
+
+  // Generate Vercel preview URL
+  const branchSlug = slugify(feature.title)
+  const vercelUrl = `https://claw-bot-army-${branchSlug}-heartbeat-v2.vercel.app`
+
+  await writeActivity(sb, feature.id, stepId, {
+    type: "thinking",
+    content: "Deploying to Vercel...",
+    delayMs: 2000,
+  }, feature)
+
+  await writeActivity(sb, feature.id, stepId, {
+    type: "result",
+    content: `Vercel preview deployed: ${vercelUrl}`,
+    delayMs: 1000,
+  }, feature)
+
+  // Update feature with Vercel URL
+  await sb.from("features").update({
+    vercel_preview_url: vercelUrl,
+    updated_at: new Date().toISOString(),
+  }).eq("id", feature.id)
+
+  // Simulate PR creation (ENABLE_REAL_PR_CREATION flag for future)
+  const ENABLE_REAL_PR_CREATION = false // TODO: Set to true when ready for real PRs
+
+  if (ENABLE_REAL_PR_CREATION) {
+    // Real PR creation would go here using GitHub API
+    // For now, this is disabled to avoid cluttering the repo
+  }
+
+  // Simulate PR data
+  const prNumber = Math.floor(Math.random() * 900) + 100 // Random PR number 100-999
+  const prUrl = `https://github.com/rob-hoeller/claw-bot-army/pull/${prNumber}`
+
+  await writeActivity(sb, feature.id, stepId, {
+    type: "thinking",
+    content: "Creating pull request...",
+    delayMs: 1500,
+  }, feature)
+
+  await writeActivity(sb, feature.id, stepId, {
+    type: "result",
+    content: `PR #${prNumber} created: ${feature.title}`,
+    delayMs: 1000,
+  }, feature)
+
+  // Update feature with PR info
+  await sb.from("features").update({
+    pr_url: prUrl,
+    pr_number: prNumber,
+    pr_status: "open",
+    branch_name: `feat/${branchSlug}`,
+    updated_at: new Date().toISOString(),
+  }).eq("id", feature.id)
+
+  // Final gate for human review
+  await writeActivity(sb, feature.id, stepId, {
+    type: "gate",
+    content: "Ready for final review. Awaiting approval to merge PR.",
+    delayMs: 500,
+  }, feature)
 }
 
 /**
@@ -211,17 +387,101 @@ export async function POST(
 
     // Loop through steps until we hit a human gate
     while (currentStep) {
+      // Fetch latest feature state for revision_count
+      const { data: latestFeature } = await sb
+        .from("features")
+        .select("*")
+        .eq("id", id)
+        .single()
+
+      // Special handling for ship step
+      if (currentStepId === "ship") {
+        await runShipStep(sb, latestFeature || feature)
+
+        // Ship always ends at a human gate
+        const { data: currentFeature } = await sb
+          .from("features")
+          .select("pipeline_log")
+          .eq("id", id)
+          .single()
+
+        const pipelineLog = currentFeature?.pipeline_log || []
+        pipelineLog.push({
+          step: currentStepId,
+          verdict: "complete",
+          timestamp: new Date().toISOString(),
+          notes: `${currentStep.label} completed - awaiting human review`,
+        })
+
+        await sb.from("features").update({
+          pipeline_log: pipelineLog,
+          needs_attention: true,
+          attention_type: "review",
+          status: calculateStatus(currentStepId as PipelineStepId),
+          updated_at: new Date().toISOString(),
+        }).eq("id", id)
+
+        break
+      }
+
       // Run activities for the current step
-      await runStep(sb, feature, currentStepId as PipelineStepId)
+      const { success, needsRevision } = await runStep(sb, latestFeature || feature, currentStepId as PipelineStepId)
 
       // Update pipeline_log
       const { data: currentFeature } = await sb
         .from("features")
-        .select("pipeline_log")
+        .select("pipeline_log, revision_count")
         .eq("id", id)
         .single()
 
       const pipelineLog = currentFeature?.pipeline_log || []
+      
+      if (needsRevision) {
+        // Revision loop - return to build
+        pipelineLog.push({
+          step: currentStepId,
+          verdict: "revision_needed",
+          timestamp: new Date().toISOString(),
+          notes: "QA found issues, returning to Build",
+          revision_loop: (currentFeature?.revision_count || 0) + 1,
+        })
+
+        await sb.from("features").update({
+          current_step: "build",
+          current_agent: "HBx_IN2",
+          status: "in_progress",
+          revision_count: (currentFeature?.revision_count || 0) + 1,
+          pipeline_log: pipelineLog,
+          updated_at: new Date().toISOString(),
+        }).eq("id", id)
+
+        // Continue loop from build step
+        currentStepId = "build"
+        currentStep = PIPELINE_STEPS.find((s) => s.id === "build")
+        await new Promise((resolve) => setTimeout(resolve, 1000))
+        continue
+      }
+
+      if (!success) {
+        // Max revisions reached, escalate to human
+        pipelineLog.push({
+          step: currentStepId,
+          verdict: "escalated",
+          timestamp: new Date().toISOString(),
+          notes: "Max revisions reached, needs human intervention",
+        })
+
+        await sb.from("features").update({
+          pipeline_log: pipelineLog,
+          needs_attention: true,
+          attention_type: "error",
+          status: "qa_review",
+          updated_at: new Date().toISOString(),
+        }).eq("id", id)
+
+        break
+      }
+
       pipelineLog.push({
         step: currentStepId,
         verdict: "complete",
@@ -234,7 +494,7 @@ export async function POST(
         await sb.from("features").update({
           pipeline_log: pipelineLog,
           needs_attention: true,
-          attention_type: "review",
+          attention_type: currentStepId === "spec" ? "approve" : "review",
           status: calculateStatus(currentStepId as PipelineStepId),
           updated_at: new Date().toISOString(),
         }).eq("id", id)

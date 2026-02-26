@@ -39,8 +39,11 @@ export async function POST(
       return NextResponse.json({ error: "Feature not found" }, { status: 404 })
     }
 
-    // Verify the feature was just approved and is ready to advance
-    if (feature.needs_attention) {
+    // If feature needs attention after escalation approval, we should resume from current step
+    // Otherwise, verify it was approved and is ready to advance
+    const wasEscalated = feature.attention_type === "error" && !feature.needs_attention
+    
+    if (feature.needs_attention && !wasEscalated) {
       return NextResponse.json(
         { error: "Feature still needs attention - cannot auto-advance" },
         { status: 400 }
@@ -61,6 +64,30 @@ export async function POST(
         { error: "Feature has no current step" },
         { status: 400 }
       )
+    }
+
+    // If this was an escalation approval, resume from current step without advancing
+    if (wasEscalated) {
+      // Just run the pipeline from the current step
+      const runPipelineUrl = new URL(`/api/features/${id}/run-pipeline`, req.url)
+      
+      const response = await fetch(runPipelineUrl.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+        return NextResponse.json(
+          { error: errorData.error || "Failed to run pipeline" },
+          { status: response.status }
+        )
+      }
+
+      const result = await response.json()
+      return NextResponse.json(result, { status: 200 })
     }
 
     // Advance to next step
