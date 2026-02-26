@@ -5,11 +5,39 @@
 
 set -e
 
-WORKSPACE="/home/ubuntu/.openclaw/workspace"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+WORKSPACE="${OPENCLAW_WORKSPACE:-/home/ubuntu/.openclaw/workspace}"
 AGENTS_DIR="/home/ubuntu/.openclaw/agents"
 
-SUPABASE_URL="https://lqlnflbzsqsmufjrygvu.supabase.co"
-SUPABASE_ANON_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxxbG5mbGJ6c3FzbXVmanJ5Z3Z1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA3NDgzNzQsImV4cCI6MjA4NjMyNDM3NH0.6HUGzcclNT5vfNAFnUUiMfTuFYT4QQ8l4VRMZOG8wdc"
+# Load Supabase env (prefer explicit env vars, fallback to dashboard/.env.local)
+SUPABASE_URL="${SUPABASE_URL:-}"
+SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-}"
+ENV_FILE="${SUPABASE_ENV_FILE:-}"
+
+if [ -z "$ENV_FILE" ]; then
+  if [ -f "${REPO_ROOT}/dashboard/.env.local" ]; then
+    ENV_FILE="${REPO_ROOT}/dashboard/.env.local"
+  elif [ -f "${WORKSPACE}/dashboard/.env.local" ]; then
+    ENV_FILE="${WORKSPACE}/dashboard/.env.local"
+  fi
+fi
+
+if [ -n "$ENV_FILE" ] && [ -f "$ENV_FILE" ]; then
+  set -a
+  # shellcheck source=/dev/null
+  . "$ENV_FILE"
+  set +a
+fi
+
+SUPABASE_URL="${SUPABASE_URL:-${NEXT_PUBLIC_SUPABASE_URL:-}}"
+SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-${NEXT_PUBLIC_SUPABASE_ANON_KEY:-${NEXT_PUBLICSUPABASE_ANON_KEY:-}}}"
+
+if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+  echo "❌ Supabase env vars missing. Set SUPABASE_URL/SUPABASE_ANON_KEY or provide dashboard/.env.local"
+  exit 1
+fi
 
 echo "🔄 Syncing all agents from Supabase..."
 echo ""
