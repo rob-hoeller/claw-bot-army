@@ -28,6 +28,8 @@ import { ActivityFeed, ActivityItemData } from "@/components/activity"
 import { AgentStatusBadge, useAgentStatus, DeploymentStatusBadge } from "@/components/agents"
 import { supabase } from "@/lib/supabase"
 import { useMemoryLogs } from "@/hooks/useMemoryLogs"
+import { OrchestratorPanel } from "@/components/orchestrator"
+import { Network } from "lucide-react"
 
 // Agent data structure
 interface AgentFile {
@@ -923,6 +925,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
   const [showNewAgent, setShowNewAgent] = useState(false)
   const [showGlobalKnowledge, setShowGlobalKnowledge] = useState(false)
   const [showActivityFeed, setShowActivityFeed] = useState(true)
+  const [viewMode, setViewMode] = useState<'agents' | 'network'>('agents')
   const currentUserId = mapUserToChannelId(userEmail, userMetadata)
 
   // Agent tree state
@@ -1107,6 +1110,39 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
     <div className="flex h-[calc(100vh-4rem)]">
       {/* Main Content */}
       <div className="flex-1 overflow-auto pt-8 pb-8 space-y-8">
+        {/* View Toggle */}
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <button
+            onClick={() => setViewMode('agents')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all",
+              viewMode === 'agents'
+                ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                : "text-white/50 hover:text-white/70 hover:bg-white/5"
+            )}
+          >
+            <Bot className="h-4 w-4" />
+            Agents
+          </button>
+          <button
+            onClick={() => setViewMode('network')}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all",
+              viewMode === 'network'
+                ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                : "text-white/50 hover:text-white/70 hover:bg-white/5"
+            )}
+          >
+            <Network className="h-4 w-4" />
+            Network
+          </button>
+        </div>
+
+        {/* Conditional Content */}
+        {viewMode === 'network' ? (
+          <OrchestratorPanel className="h-[calc(100%-5rem)]" />
+        ) : (
+          <>
       {/* Org Chart */}
       <div className="relative">
         {/* Global Knowledge Base Card - Top of hierarchy */}
@@ -1186,8 +1222,11 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
           Live data from Supabase • {1 + (agentTree.children?.length ?? 0)} agents
         </p>
       </div>
+      </>
+      )}
 
-      {/* Panels */}
+      {/* Panels (only for agents view) */}
+      {viewMode === 'agents' && (
       <AnimatePresence>
         {selectedAgent && (
           <>
@@ -1240,6 +1279,7 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
         )}
 
       </AnimatePresence>
+      )}
       </div>
 
       {/* Activity Feed Side Panel */}
