@@ -11,23 +11,9 @@ import Dashboard from "@/components/Dashboard"
 import AgentsPage from "@/components/AgentsPage"
 import AppShell from "@/components/AppShell"
 import { FeatureBoard } from "@/components/features"
-import { MonitoringPage } from "@/components/MonitoringPage"
-import { TokenUsagePage } from "@/components/TokenUsagePage"
-import { OrchestratorPanel } from "@/components/orchestrator"
+import { PlatformPage } from "@/components/PlatformPage"
 import MissionControl from "@/components/mission/MissionControl"
 import { Loader2 } from "lucide-react"
-
-// Placeholder pages for navigation
-function PlaceholderPage({ title }: { title: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] text-center">
-      <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-12">
-        <h2 className="text-xl font-semibold text-white mb-2">{title}</h2>
-        <p className="text-white/40">Coming soon</p>
-      </div>
-    </div>
-  )
-}
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null)
@@ -150,34 +136,17 @@ export default function Home() {
             <MissionControl className="h-full" />
           </div>
         )
-      case "network":
-        return (
-          <div className="h-[calc(100vh-8rem)]">
-            <OrchestratorPanel className="h-full" />
-          </div>
-        )
       case "agents":
         return <AgentsPage userEmail={user?.email} userMetadata={user?.user_metadata} />
-      case "features":
-        return <FeatureBoard />
-      case "monitoring":
-        return <MonitoringPage />
-      case "usage":
-        return <TokenUsagePage />
-      case "bugs":
-        return <PlaceholderPage title="Bugs" />
+      case "platform":
+        return <PlatformPage />
       case "settings":
         return <Settings user={user} onUpdate={refreshUser} embedded />
-      case "users":
-        return <PlaceholderPage title="Users" />
-      case "roles":
-        return <PlaceholderPage title="Roles" />
-      case "tenants":
-        return <PlaceholderPage title="Business Units" />
-      case "audit":
-        return <PlaceholderPage title="Audit Log" />
+      // Hidden routes (direct access only, not in nav)
+      case "features":
+        return <FeatureBoard />
       default:
-        return <Dashboard />
+        return <Dashboard onNavigate={setCurrentPage} />
     }
   }
 
