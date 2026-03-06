@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { usePhaseChatMessages } from "@/hooks/usePhaseChatMessages"
-import { useCurrentUser } from "@/hooks/useCurrentUser"
+import { useProfile } from "@/hooks/useProfile"
 import { PhaseChatMessages } from "./PhaseChatMessages"
 import { PhaseChatInput } from "./PhaseChatInput"
 
@@ -32,7 +32,7 @@ interface PhaseChatPanelProps {
 
 export function PhaseChatPanel({ featureId, phase, agents, readonly = false }: PhaseChatPanelProps) {
   const { messages, loading, sendMessage } = usePhaseChatMessages(featureId, phase)
-  const { userId, userName } = useCurrentUser()
+  const { profile } = useProfile()
   const [isLive, setIsLive] = useState(false)
 
   // Determine "live" status: any message within last 60 seconds
@@ -55,7 +55,7 @@ export function PhaseChatPanel({ featureId, phase, agents, readonly = false }: P
   }, [messages])
 
   const handleSend = (content: string, mentions: string[], attachments: import("@/components/chat/types").Attachment[]) => {
-    sendMessage(content, mentions, attachments, userId ?? "unknown", userName ?? "Unknown")
+    sendMessage(content, mentions, attachments, profile?.id ?? "unknown", profile?.displayName ?? "Unknown")
   }
 
   const label = PHASE_LABELS[phase] ?? phase
