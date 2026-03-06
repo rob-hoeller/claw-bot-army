@@ -125,6 +125,58 @@ export async function POST(
       }
     }
 
+    // If feature has pipeline state, sync current_step/current_agent and trigger run-pipeline
+    if (data.current_step) {
+      const stepToAgentMap: Record<string, { step: string; agent: string }> = {
+        design_review: { step: 'design', agent: 'HBx_IN5' },
+        in_progress: { step: 'build', agent: 'HBx_IN2' },
+        qa_review: { step: 'qa', agent: 'HBx_IN6' },
+        review: { step: 'ship', agent: 'HBx' },
+      }
+      const mapping = stepToAgentMap[target_status]
+      if (mapping) {
+        await sb.from("features").update({
+          current_step: mapping.step,
+          current_agent: mapping.agent,
+          needs_attention: false,
+          attention_type: null,
+        }).eq("id", id)
+
+        // Trigger pipeline to continue from the new step
+        try {
+          const runPipelineUrl = new URL(`/api/features/${id}/run-pipeline`, req.url)
+          fetch(runPipelineUrl.toString(), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          }).catch((err) => {
+            console.error("[API] Failed to trigger run-pipeline:", err)
+          })
+        } catch (pipelineErr) {
+          console.error("[API] Error triggering pipeline:", pipelineErr)
+        }
+      }
+
+      // Write audit trail activity for the approval
+      try {
+        await sb.from("agent_activity").insert({
+          feature_id: id,
+          agent_id: approved_by || "system",
+          action_type: "approve",
+          step_id: data.current_step,
+          event_type: "gate_passed",
+          content: `${approved_by || "System"} approved at ${data.current_step}. Advancing to ${mapping?.step || target_status}.`,
+          metadata: {
+            from_step: data.current_step,
+            to_step: mapping?.step || target_status,
+            approved_by: approved_by,
+            timestamp: new Date().toISOString(),
+          },
+        })
+      } catch (actErr) {
+        console.error("[API] Approval activity error:", actErr)
+      }
+    }
+
     // Fire-and-forget gateway notification for pipeline routing
     const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL
     const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
