@@ -73,7 +73,7 @@ import type { HandoffPacket } from "./audit-trail/types"
 import { useHandoffPackets } from "@/hooks/useHandoffPackets"
 import { ClipboardList } from "lucide-react"
 import { PhaseChatPanel } from "./audit-trail/PhaseChatPanel"
-import { useCurrentUser } from "@/hooks/useCurrentUser"
+import { useProfile } from "@/hooks/useProfile"
 import { LivePipelineView } from "./LivePipelineView"
 import type { PipelineStepId } from "./pipeline.types"
 
@@ -553,13 +553,13 @@ function CreateFeaturePanel({
     }
   }
 
-  const { userId: currentUserId, userName: currentUserName } = useCurrentUser()
-  const requestedBy = currentUserId ?? (agents.find(a => a.id === 'HBx')?.id ?? agents[0]?.id ?? null)
+  const { profile } = useProfile()
+  const requestedBy = profile?.id ?? (agents.find(a => a.id === 'HBx')?.id ?? agents[0]?.id ?? null)
 
   const [savingPhase, setSavingPhase] = useState<'idle' | 'generating' | 'creating'>('idle')
 
   const handleCreateFromChat = async () => {
-    if (!currentUserId) {
+    if (!profile?.id) {
       setNotice({ type: 'info', message: "Please select your identity in the top-right corner before creating a feature." })
       return
     }
@@ -816,7 +816,7 @@ function ApproveButton({
   onApprove: (status: FeatureStatus) => void
   onError: (message: string) => void
 }) {
-  const { userId: currentUserId } = useCurrentUser()
+  const { profile } = useProfile()
   const [loading, setLoading] = useState(false)
   const [creatingPR, setCreatingPR] = useState(false)
   const allowed = validTransitions[feature.status]?.includes(targetStatus)
@@ -841,7 +841,7 @@ function ApproveButton({
           const res = await fetch(`/api/features/${feature.id}/approve`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ target_status: targetStatus, approved_by: currentUserId ?? 'unknown' }),
+            body: JSON.stringify({ target_status: targetStatus, approved_by: profile?.id ?? 'unknown' }),
           })
           if (!res.ok) {
             const body = await res.json().catch(() => null)
@@ -899,7 +899,7 @@ function FeatureDetailPanel({
   onError: (message: string) => void
 }) {
   const [messages, setMessages] = useState<BridgeMessage[]>([])
-  const { userId: currentUserId, userName: currentUserName } = useCurrentUser()
+  const { profile } = useProfile()
   const [newMessage, setNewMessage] = useState("")
   const [loadingMessages, setLoadingMessages] = useState(true)
   const [sending, setSending] = useState(false)
@@ -981,8 +981,8 @@ function FeatureDetailPanel({
     setSending(true)
 
     const optimistic: BridgeMessage = {
-      id: `opt-${Date.now()}`, work_item_id: feature.id, sender_type: 'user', sender_id: currentUserId ?? 'unknown',
-      sender_name: currentUserName ?? 'Unknown', content, metadata: {}, created_at: new Date().toISOString(),
+      id: `opt-${Date.now()}`, work_item_id: feature.id, sender_type: 'user', sender_id: profile?.id ?? 'unknown',
+      sender_name: profile?.displayName ?? 'Unknown', content, metadata: {}, created_at: new Date().toISOString(),
     }
     setMessages(prev => [...prev, optimistic])
 
@@ -996,7 +996,7 @@ function FeatureDetailPanel({
       const saveRes = await fetch(`/api/work-items/${feature.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sender_type: 'user', sender_id: currentUserId ?? 'unknown', sender_name: currentUserName ?? 'Unknown', content: messageContent }),
+        body: JSON.stringify({ sender_type: 'user', sender_id: profile?.id ?? 'unknown', sender_name: profile?.displayName ?? 'Unknown', content: messageContent }),
       })
       if (saveRes.ok) {
         const saved = await saveRes.json()
