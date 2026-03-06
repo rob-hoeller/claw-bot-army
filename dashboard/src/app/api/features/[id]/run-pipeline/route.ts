@@ -167,15 +167,27 @@ async function writeActivity(
   const agentId = PIPELINE_STEPS.find((s) => s.id === stepId)?.agent || "system"
   const content = interpolate(event.content, feature)
 
+  const stepDef = PIPELINE_STEPS.find((s) => s.id === stepId)
+  const agentName = stepDef?.label || agentId
+
   const { error } = await sb.from("agent_activity").insert({
     feature_id: featureId,
     agent_id: agentId,
     step_id: stepId,
     event_type: event.type,
-    action_type: event.type, // Legacy column - use same value as event_type
+    action_type: event.type,
     content,
     metadata: {
       timestamp: new Date().toISOString(),
+      agent_name: agentName,
+      pipeline_step: stepId,
+      audit: {
+        actor: agentId,
+        actor_name: agentName,
+        action: event.type,
+        step: stepId,
+        recorded_at: new Date().toISOString(),
+      },
     },
   })
 

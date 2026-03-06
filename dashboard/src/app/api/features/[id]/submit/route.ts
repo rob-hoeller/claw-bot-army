@@ -102,6 +102,7 @@ export async function POST(
     const activityPayload = {
       feature_id: feature.id,
       agent_id: "HBx",
+      action_type: "thinking",
       step_id: "intake",
       event_type: "thinking",
       content: "Feature submitted. Routing to architect...",

@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const payload: FeatureInsert = {
+    const payload: Record<string, unknown> = {
       title: body.title.trim(),
       description: body.description ?? null,
       priority: body.priority ?? "medium",
@@ -71,6 +71,10 @@ export async function POST(req: NextRequest) {
       feature_spec: body.feature_spec ?? null,
       design_spec: body.design_spec ?? null,
       acceptance_criteria: body.acceptance_criteria ?? null,
+      current_step: "intake",
+      current_agent: "HBx",
+      needs_attention: false,
+      pipeline_log: [{ step: "intake", agent: "HBx", agent_name: "HBx (Orchestrator)", timestamp: new Date().toISOString(), notes: "Feature created. Pipeline initialized." }],
     }
 
     const sb = createClient(supabaseUrl, supabaseKey)
