@@ -13,7 +13,7 @@ import { SessionViewer } from "./SessionViewer"
 import { SessionInfo } from "./types"
 import { cn } from "@/lib/utils"
 
-type FilterType = 'all' | 'subagents' | 'dashboard'
+type FilterType = 'all' | 'subagents' | 'dashboard' | 'cron'
 
 interface OrchestratorPanelProps {
   className?: string
@@ -25,8 +25,9 @@ export function OrchestratorPanel({ className }: OrchestratorPanelProps) {
   const [viewMode, setViewMode] = useState<'split' | 'list'>('split')
 
   const filterOptions: { value: FilterType; label: string }[] = [
-    { value: 'all', label: 'All Sessions' },
+    { value: 'all', label: 'All' },
     { value: 'subagents', label: 'Sub-Agents' },
+    { value: 'cron', label: 'Cron' },
     { value: 'dashboard', label: 'Dashboard' },
   ]
 
