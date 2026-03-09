@@ -15,6 +15,7 @@ import { PlatformPage } from "@/components/PlatformPage"
 import TaskBoardPage from "@/components/TaskBoardPage"
 import CalendarPage from "@/components/CalendarPage"
 import MemoryBrowserPage from "@/components/MemoryBrowserPage"
+import DocsPage from "@/components/DocsPage"
 import MissionControl from "@/components/mission/MissionControl"
 import { Loader2 } from "lucide-react"
 
@@ -147,6 +148,8 @@ export default function Home() {
         return <CalendarPage />
       case "memories":
         return <MemoryBrowserPage />
+      case "docs":
+        return <DocsPage />
       case "platform":
         return <PlatformPage />
       case "settings":

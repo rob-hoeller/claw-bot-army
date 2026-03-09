@@ -15,6 +15,7 @@ import {
   CheckSquare,
   Calendar,
   Brain,
+  FileText,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -32,6 +33,7 @@ const navItems = [
   { id: "task-board", label: "Tasks", icon: CheckSquare },
   { id: "calendar", label: "Calendar", icon: Calendar },
   { id: "memories", label: "Memories", icon: Brain },
+  { id: "docs", label: "Docs", icon: FileText },
   { id: "mission-control", label: "Missions", icon: Rocket },
   { id: "agents", label: "Agents", icon: Bot },
   { id: "platform", label: "Platform", icon: BarChart3 },
