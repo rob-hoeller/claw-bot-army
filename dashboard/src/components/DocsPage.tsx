@@ -86,13 +86,13 @@ function renderMarkdown(text: string): React.ReactNode[] {
 
 // ─── Category config ─────────────────────────────────────────────────────────
 
-const CATEGORIES: { id: DocCategory | "all"; label: string; color: string }[] = [
-  { id: "all", label: "All", color: "text-white/60" },
-  { id: "knowledge-base", label: "Knowledge Base", color: "text-blue-400" },
-  { id: "feature-spec", label: "Feature Specs", color: "text-purple-400" },
-  { id: "design-spec", label: "Design Specs", color: "text-pink-400" },
-  { id: "build-report", label: "Build Reports", color: "text-amber-400" },
-  { id: "other", label: "Other", color: "text-white/40" },
+const CATEGORIES: { id: DocCategory | "all"; label: string; color: string; activeBg: string; activeBorder: string; countColor: string }[] = [
+  { id: "all", label: "All", color: "text-white/60", activeBg: "bg-white/10", activeBorder: "border-white/20", countColor: "text-white/50" },
+  { id: "knowledge-base", label: "Knowledge Base", color: "text-blue-400", activeBg: "bg-blue-500/15", activeBorder: "border-blue-500/30", countColor: "text-blue-400/60" },
+  { id: "feature-spec", label: "Feature Specs", color: "text-purple-400", activeBg: "bg-purple-500/15", activeBorder: "border-purple-500/30", countColor: "text-purple-400/60" },
+  { id: "design-spec", label: "Design Specs", color: "text-pink-400", activeBg: "bg-pink-500/15", activeBorder: "border-pink-500/30", countColor: "text-pink-400/60" },
+  { id: "build-report", label: "Build Reports", color: "text-amber-400", activeBg: "bg-amber-500/15", activeBorder: "border-amber-500/30", countColor: "text-amber-400/60" },
+  { id: "other", label: "Other", color: "text-white/40", activeBg: "bg-white/10", activeBorder: "border-white/20", countColor: "text-white/30" },
 ]
 
 function categoryLabel(cat: DocCategory): string {
@@ -527,22 +527,6 @@ export default function DocsPage() {
           </div>
         </div>
 
-        {/* Stats Bar */}
-        {!loading && docs.length > 0 && (
-          <div className="flex items-center gap-3 mb-6 flex-wrap">
-            {CATEGORIES.filter((c) => c.id !== "all").map((cat) => {
-              const count = stats.byCategory[cat.id] ?? 0
-              if (count === 0) return null
-              return (
-                <div key={cat.id} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.03] border border-white/5">
-                  <span className={cn("text-xs font-medium", cat.color)}>{cat.label}</span>
-                  <span className="text-xs text-white/30">{count}</span>
-                </div>
-              )
-            })}
-          </div>
-        )}
-
         {/* Controls */}
         <div className="flex items-center gap-3 mb-5 flex-wrap">
           {/* Search */}
@@ -608,23 +592,24 @@ export default function DocsPage() {
           </div>
         </div>
 
-        {/* Category Filter Tabs */}
-        <div className="flex items-center gap-1 mb-6 overflow-x-auto pb-1 scrollbar-none">
+        {/* Category Filter Tabs (color-coordinated + clickable) */}
+        <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-1 scrollbar-none flex-wrap">
           {CATEGORIES.map((cat) => {
             const count = cat.id === "all" ? docs.length : (stats.byCategory[cat.id] ?? 0)
+            const isActive = categoryFilter === cat.id
             return (
               <button
                 key={cat.id}
                 onClick={() => setCategoryFilter(cat.id as DocCategory | "all")}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all",
-                  categoryFilter === cat.id
-                    ? "bg-purple-500/20 text-purple-300"
-                    : "text-white/40 hover:text-white/60 hover:bg-white/5"
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all border",
+                  isActive
+                    ? cn(cat.activeBg, cat.activeBorder, cat.color)
+                    : "bg-white/[0.03] border-white/5 text-white/40 hover:text-white/60 hover:bg-white/5"
                 )}
               >
                 {cat.label}
-                <span className={cn("text-[10px]", categoryFilter === cat.id ? "text-purple-400" : "text-white/20")}>
+                <span className={cn("text-[10px]", isActive ? cat.countColor : "text-white/20")}>
                   {count}
                 </span>
               </button>
