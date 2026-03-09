@@ -18,6 +18,9 @@ import {
   MessageSquare,
   Activity,
   Brain,
+  Sparkles,
+  Users,
+  Zap,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -70,6 +73,40 @@ const AGENT_FILE_TABS = ["SOUL", "AGENTS", "IDENTITY", "TOOLS", "HEARTBEAT", "US
 
 const departments = ["Platform", "Sales", "Innovation", "Support", "Warranty", "Construction", "Start Up", "Settlement", "Design", "QA"]
 
+// Department color mapping
+const DEPT_COLORS: Record<string, string> = {
+  Platform: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+  Sales: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  Innovation: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  Support: "bg-green-500/10 text-green-400 border-green-500/20",
+  Warranty: "bg-pink-500/10 text-pink-400 border-pink-500/20",
+  Construction: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  "Start Up": "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
+  Settlement: "bg-indigo-500/10 text-indigo-400 border-indigo-500/20",
+  Design: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  QA: "bg-lime-500/10 text-lime-400 border-lime-500/20",
+}
+
+function getDeptColor(dept: string) {
+  return DEPT_COLORS[dept] ?? "bg-white/5 text-white/40 border-white/10"
+}
+
+function formatLastActive(iso?: string): string {
+  if (!iso) return "Never"
+  try {
+    const diff = Date.now() - new Date(iso).getTime()
+    const mins = Math.floor(diff / 60000)
+    if (mins < 1) return "Active now"
+    if (mins < 60) return `${mins}m ago`
+    const hrs = Math.floor(mins / 60)
+    if (hrs < 24) return `${hrs}h ago`
+    const days = Math.floor(hrs / 24)
+    return `${days}d ago`
+  } catch {
+    return "Unknown"
+  }
+}
+
 // Agent Card Component
 function AgentCard({
   agent,
@@ -83,22 +120,15 @@ function AgentCard({
   isRoot?: boolean
 }) {
   const gatewayStatus = useAgentStatus(agent.id.toLowerCase())
-  
+
   // Get agent emoji
-  const getAgentEmoji = (agent: Agent) => {
-    if (agent.emoji) return agent.emoji
-    
+  const getAgentEmoji = (a: Agent) => {
+    if (a.emoji) return a.emoji
     const emojiMap: Record<string, string> = {
-      'HBx': '🧠',
-      'HBx_SL1': '🏠',
-      'HBx_SL2': '🔍',
-      'HBx_SK1': '🛠️',
-      'HBx_IN1': '📐',
-      'HBx_IN2': '🏭',
-      'HBx_IN3': '🔬',
-      'HBx_SP1': '🛟',
+      'HBx': '🧠', 'HBx_SL1': '🏠', 'HBx_SL2': '🔍', 'HBx_SK1': '🛠️',
+      'HBx_IN1': '📐', 'HBx_IN2': '🏭', 'HBx_IN3': '🔬', 'HBx_SP1': '🛟',
     }
-    return emojiMap[agent.id] || '🤖'
+    return emojiMap[a.id] || '🤖'
   }
 
   return (
@@ -107,34 +137,65 @@ function AgentCard({
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
       className={cn(
-        "relative flex flex-col items-center p-4 rounded-xl border transition-all text-left",
+        "relative flex flex-col items-start p-4 rounded-xl border transition-all text-left",
         isSelected
           ? "border-purple-500/50 bg-purple-500/10 shadow-[0_0_20px_-5px_rgba(147,51,234,0.3)]"
           : "border-white/10 bg-white/[0.02] hover:border-white/20 hover:bg-white/[0.04]",
-        isRoot ? "min-w-[200px]" : "min-w-[160px]"
+        isRoot ? "min-w-[220px]" : "min-w-[180px] max-w-[220px]"
       )}
     >
       {/* Gateway Status Badge - Top Right */}
       <div className="absolute top-2 right-2">
         <AgentStatusBadge status={gatewayStatus} size="sm" />
       </div>
-      
-      <div
-        className={cn(
-          "flex items-center justify-center rounded-xl mb-3",
-          isRoot ? "w-14 h-14" : "w-12 h-12",
+
+      {/* Emoji + ID Row */}
+      <div className="flex items-center gap-3 mb-2 w-full pr-8">
+        <div className={cn(
+          "flex items-center justify-center rounded-xl shrink-0",
+          isRoot ? "w-12 h-12" : "w-10 h-10",
           "bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/20"
-        )}
-      >
-        <span className={cn(isRoot ? "text-2xl" : "text-xl")}>{getAgentEmoji(agent)}</span>
+        )}>
+          <span className={cn(isRoot ? "text-2xl" : "text-lg")}>{getAgentEmoji(agent)}</span>
+        </div>
+        <div className="min-w-0">
+          <p className={cn("font-semibold text-white leading-tight", isRoot ? "text-base" : "text-sm")}>
+            {agent.id}
+          </p>
+          <p className="text-[10px] text-white/40 truncate mt-0.5">{agent.role}</p>
+        </div>
       </div>
-      <p className={cn("font-semibold text-white", isRoot ? "text-lg" : "text-sm")}>
-        {agent.id}
-      </p>
-      <p className="text-xs text-white/50 mt-0.5 text-center line-clamp-2">{agent.role}</p>
-      <div className="flex items-center gap-2 mt-2">
+
+      {/* Description */}
+      {agent.description && (
+        <p className="text-[11px] text-white/50 leading-relaxed line-clamp-2 mb-2 w-full">
+          {agent.description}
+        </p>
+      )}
+
+      {/* Department + Status */}
+      <div className="flex items-center gap-1.5 flex-wrap mt-auto w-full">
+        <Badge variant="outline" className={cn("text-[10px] border px-1.5 py-0", getDeptColor(agent.dept))}>
+          {agent.dept}
+        </Badge>
         <DeploymentStatusBadge status={agent.status} size="sm" />
       </div>
+
+      {/* Capabilities */}
+      {agent.capabilities && agent.capabilities.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2 w-full">
+          {agent.capabilities.slice(0, 3).map((cap) => (
+            <span key={cap} className="px-1.5 py-0.5 rounded bg-white/5 text-[9px] text-white/40 border border-white/5">
+              {cap}
+            </span>
+          ))}
+          {agent.capabilities.length > 3 && (
+            <span className="px-1.5 py-0.5 rounded bg-white/5 text-[9px] text-white/30">
+              +{agent.capabilities.length - 3}
+            </span>
+          )}
+        </div>
+      )}
     </motion.button>
   )
 }
@@ -913,6 +974,59 @@ function AgentDetailPanel({
   )
 }
 
+// Department Group Component
+function DeptGroup({
+  dept,
+  agents,
+  selectedAgentId,
+  onSelectAgent,
+  onAddAgent,
+  showAdd,
+}: {
+  dept: string
+  agents: Agent[]
+  selectedAgentId: string | null
+  onSelectAgent: (agent: Agent) => void
+  onAddAgent: () => void
+  showAdd: boolean
+}) {
+  const [collapsed, setCollapsed] = useState(false)
+
+  return (
+    <div className="rounded-xl border border-white/5 bg-white/[0.01] overflow-hidden">
+      {/* Dept header */}
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/[0.03] transition-all"
+      >
+        <ChevronRight className={cn(
+          "h-3.5 w-3.5 text-white/30 transition-transform",
+          !collapsed && "rotate-90"
+        )} />
+        <Badge variant="outline" className={cn("text-xs border", getDeptColor(dept))}>
+          {dept}
+        </Badge>
+        <span className="text-xs text-white/30">{agents.length} agent{agents.length !== 1 ? "s" : ""}</span>
+      </button>
+
+      {/* Agents */}
+      {!collapsed && (
+        <div className="px-4 pb-4 flex flex-wrap gap-3">
+          {agents.map((agent) => (
+            <AgentCard
+              key={agent.id}
+              agent={agent}
+              onClick={() => onSelectAgent(agent)}
+              isSelected={selectedAgentId === agent.id}
+            />
+          ))}
+          {showAdd && <AddAgentCard onClick={onAddAgent} />}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Props interface for AgentsPage
 interface AgentsPageProps {
   userEmail?: string
@@ -1106,12 +1220,81 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
   const rootAgent = agentTree
   const childAgents = agentTree.children ?? []
 
+  // Department grouping for child agents
+  const agentsByDept = childAgents.reduce((acc, agent) => {
+    const dept = agent.dept || "Other"
+    if (!acc[dept]) acc[dept] = []
+    acc[dept].push(agent)
+    return acc
+  }, {} as Record<string, Agent[]>)
+
+  const deptOrder = ["Platform", "Sales", "Innovation", "Support", ...Object.keys(agentsByDept).filter(
+    d => !["Platform", "Sales", "Innovation", "Support"].includes(d)
+  )]
+  const orderedDepts = deptOrder.filter(d => agentsByDept[d]?.length > 0)
+
+  // Stats
+  const totalAgents = 1 + childAgents.length
+  const activeAgents = [rootAgent, ...childAgents].filter(a => a.status === "active").length
+  const deployingAgents = [rootAgent, ...childAgents].filter(a => a.status === "deploying").length
+
   return (
     <div className="flex h-[calc(100vh-4rem)]">
       {/* Main Content */}
-      <div className="flex-1 overflow-auto pt-8 pb-8 space-y-8">
+      <div className="flex-1 overflow-auto pb-8">
+
+        {/* Mission Statement Banner */}
+        <div className="px-6 pt-6 pb-0">
+          <div className="relative overflow-hidden rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-500/10 via-blue-500/5 to-purple-500/10 px-6 py-5 mb-6">
+            {/* Decorative glow */}
+            <div className="absolute -top-8 -left-8 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute -bottom-8 -right-8 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="relative flex items-start gap-3">
+              <Sparkles className="h-5 w-5 text-purple-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[10px] font-medium uppercase tracking-widest text-purple-400/80 mb-1">Mission</p>
+                <p className="text-sm text-white/80 leading-relaxed">
+                  To bring happiness to ourselves and our homeowners by not only creating exceptional homes and communities but also providing an extraordinary home buying experience.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Bar */}
+        <div className="px-6 mb-6">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+              <Users className="h-4 w-4 text-white/40" />
+              <span className="text-sm font-medium text-white">{totalAgents}</span>
+              <span className="text-xs text-white/40">Total Agents</span>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              <span className="text-sm font-medium text-white">{activeAgents}</span>
+              <span className="text-xs text-white/40">Active</span>
+            </div>
+            {deployingAgents > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+                <div className="w-2 h-2 rounded-full bg-amber-400" />
+                <span className="text-sm font-medium text-white">{deployingAgents}</span>
+                <span className="text-xs text-white/40">Deploying</span>
+              </div>
+            )}
+            {orderedDepts.map(dept => (
+              <div key={dept} className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-white/[0.03] border border-white/5">
+                <Badge variant="outline" className={cn("text-[10px] border px-1.5 py-0", getDeptColor(dept))}>
+                  {dept}
+                </Badge>
+                <span className="text-xs text-white/30">{agentsByDept[dept].length}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="px-6 space-y-8">
         {/* View Toggle */}
-        <div className="flex items-center justify-center gap-2 mb-4">
+        <div className="flex items-center gap-2">
           <button
             onClick={() => setViewMode('agents')}
             className={cn(
@@ -1188,42 +1371,35 @@ export default function AgentsPage({ userEmail, userMetadata }: AgentsPageProps)
               <ChevronDown className="h-4 w-4 text-white/20 -mt-1" />
             </div>
           )}
-
-          {/* Child Agents */}
-          {childAgents.length > 0 && (
-            <div className="flex flex-wrap justify-center gap-4 mt-2">
-              {/* Horizontal connector */}
-              <div className="absolute w-[calc(100%-200px)] max-w-xl h-px bg-white/10 -mt-6 left-1/2 -translate-x-1/2" />
-              
-              {childAgents.map((child) => (
-                <div key={child.id} className="flex flex-col items-center">
-                  <div className="w-px h-4 bg-white/10 -mt-2 mb-2" />
-                  <AgentCard
-                    agent={child}
-                    onClick={() => setSelectedAgent(child)}
-                    isSelected={selectedAgent?.id === child.id}
-                  />
-                </div>
-              ))}
-              
-              {/* Add Agent Card */}
-              <div className="flex flex-col items-center">
-                <div className="w-px h-4 bg-white/10 -mt-2 mb-2 opacity-0" />
-                <AddAgentCard onClick={() => setShowNewAgent(true)} />
-              </div>
-            </div>
-          )}
         </div>
+
+        {/* Department Groups */}
+        {orderedDepts.length > 0 && (
+          <div className="mt-4 space-y-6">
+            {orderedDepts.map((dept) => (
+              <DeptGroup
+                key={dept}
+                dept={dept}
+                agents={agentsByDept[dept]}
+                selectedAgentId={selectedAgent?.id ?? null}
+                onSelectAgent={setSelectedAgent}
+                onAddAgent={() => setShowNewAgent(true)}
+                showAdd={dept === orderedDepts[orderedDepts.length - 1]}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Data source indicator */}
       <div className="mt-8 text-center">
         <p className="text-white/20 text-xs">
-          Live data from Supabase • {1 + (agentTree.children?.length ?? 0)} agents
+          Live data from Supabase • {totalAgents} agents
         </p>
       </div>
       </>
       )}
+      </div>
 
       {/* Panels (only for agents view) */}
       {viewMode === 'agents' && (
