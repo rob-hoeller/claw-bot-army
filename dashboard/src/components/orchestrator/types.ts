@@ -6,12 +6,21 @@ export interface SessionInfo {
   kind: string
   channel: string
   model: string
+  modelProvider?: string
   totalTokens: number
+  inputTokens?: number
+  outputTokens?: number
   updatedAt: number
+  ageMs?: number
+  agentId?: string
   displayName: string
   label?: string
   isSubAgent: boolean
+  isCron?: boolean
   isDashboard: boolean
+  isMain?: boolean
+  contextTokens?: number
+  aborted?: boolean
   lastMessages: SessionMessage[]
 }
 

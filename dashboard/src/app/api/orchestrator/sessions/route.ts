@@ -1,156 +1,151 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 /**
  * GET /api/orchestrator/sessions
  * 
- * Lists all active OpenClaw sessions with filtering options.
- * Shows sub-agent sessions spawned by the orchestrator.
+ * Lists all active OpenClaw sessions via `openclaw sessions --json`.
  * 
  * Query params:
- * - filter?: 'all' | 'subagents' | 'dashboard' - filter session types
- * - activeMinutes?: number - only sessions active in last N minutes
- * - limit?: number - max sessions to return
+ * - filter?: 'all' | 'subagents' | 'dashboard' | 'cron' - filter session types
+ * - activeMinutes?: number - only sessions active in last N minutes (default: 60)
+ * - limit?: number - max sessions to return (default: 50)
  */
 
-const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || 'http://127.0.0.1:18789'
-const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN
-
-export interface OpenClawSession {
+interface RawSession {
   key: string
   sessionId: string
   kind: string
-  channel: string
-  model: string
+  channel?: string
+  model?: string
+  modelProvider?: string
   totalTokens: number
+  inputTokens?: number
+  outputTokens?: number
   updatedAt: number
-  displayName?: string
+  ageMs?: number
+  agentId?: string
   label?: string
-  transcriptPath?: string
-  messages?: Array<{
-    role: string
-    content: string | Array<{ type: string; text?: string }>
-    timestamp?: number
-  }>
+  systemSent?: boolean
+  abortedLastRun?: boolean
+  contextTokens?: number
 }
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const filter = searchParams.get('filter') || 'all'
-    const activeMinutes = parseInt(searchParams.get('activeMinutes') || '0')
+    const activeMinutes = parseInt(searchParams.get('activeMinutes') || '60')
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    if (!GATEWAY_TOKEN) {
-      return NextResponse.json(
-        { error: 'Gateway token not configured' },
-        { status: 500 }
-      )
-    }
-
-    // Call sessions_list via tools/invoke
-    const gatewayResponse = await fetch(`${GATEWAY_URL}/tools/invoke`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${GATEWAY_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        tool: 'sessions_list',
-        args: {
-          limit,
-          messageLimit: 3, // Include last few messages for preview
-          ...(activeMinutes > 0 && { activeMinutes }),
-        },
-      }),
+    // Use openclaw CLI to get sessions
+    const cmd = `openclaw sessions --json --all-agents${activeMinutes > 0 ? ` --active ${activeMinutes}` : ''}`
+    
+    const { stdout } = await execAsync(cmd, { 
+      timeout: 10000,
+      env: { ...process.env, PATH: `/home/ubuntu/.npm-global/bin:${process.env.PATH}` }
     })
 
-    if (!gatewayResponse.ok) {
-      const errorText = await gatewayResponse.text()
-      console.error('[Gateway Error]', gatewayResponse.status, errorText)
-      return NextResponse.json(
-        { error: `Gateway error: ${gatewayResponse.status}` },
-        { status: gatewayResponse.status }
-      )
-    }
-
-    const data = await gatewayResponse.json()
-    
-    if (!data.ok) {
-      return NextResponse.json(
-        { error: data.error?.message || 'Failed to list sessions' },
-        { status: 400 }
-      )
-    }
-
-    let sessions: OpenClawSession[] = data.result?.sessions || []
+    const data = JSON.parse(stdout)
+    let sessions: RawSession[] = data.sessions || []
 
     // Apply filters
     if (filter === 'subagents') {
-      // Sub-agent sessions typically have 'isolated' kind or specific label patterns
       sessions = sessions.filter(s => 
         s.kind === 'isolated' || 
-        s.label?.includes('spawn') ||
-        s.key.includes('spawn')
+        s.key.includes('spawn') ||
+        s.key.includes('subagent')
       )
     } else if (filter === 'dashboard') {
-      // Dashboard sessions have 'dashboard' in the key
-      sessions = sessions.filter(s => s.key.includes('dashboard'))
+      sessions = sessions.filter(s => 
+        s.key.includes('dashboard') ||
+        s.channel === 'webchat'
+      )
+    } else if (filter === 'cron') {
+      sessions = sessions.filter(s => s.key.includes('cron'))
     }
+
+    // Sort by most recently updated
+    sessions.sort((a, b) => b.updatedAt - a.updatedAt)
+
+    // Limit
+    sessions = sessions.slice(0, limit)
 
     // Transform for UI
     const transformed = sessions.map(s => ({
       key: s.key,
       sessionId: s.sessionId,
-      kind: s.kind,
-      channel: s.channel,
-      model: s.model,
-      totalTokens: s.totalTokens,
+      kind: s.kind || 'unknown',
+      channel: s.channel || 'unknown',
+      model: s.model || 'unknown',
+      modelProvider: s.modelProvider || '',
+      totalTokens: s.totalTokens || 0,
+      inputTokens: s.inputTokens || 0,
+      outputTokens: s.outputTokens || 0,
       updatedAt: s.updatedAt,
-      displayName: s.displayName || extractDisplayName(s.key),
-      label: s.label,
+      ageMs: s.ageMs || 0,
+      agentId: s.agentId || 'main',
+      displayName: extractDisplayName(s),
+      label: s.label || '',
       isSubAgent: s.kind === 'isolated' || s.key.includes('spawn'),
-      isDashboard: s.key.includes('dashboard'),
-      lastMessages: (s.messages || []).map(m => ({
-        role: m.role,
-        content: typeof m.content === 'string' 
-          ? m.content 
-          : m.content?.find(c => c.type === 'text')?.text || '',
-        timestamp: m.timestamp,
-      })),
+      isCron: s.key.includes('cron'),
+      isDashboard: s.key.includes('dashboard') || s.channel === 'webchat',
+      isMain: s.key === 'agent:main:main' || s.key.endsWith(':telegram:8391685290'),
+      contextTokens: s.contextTokens || 0,
+      aborted: s.abortedLastRun || false,
+      lastMessages: [], // CLI doesn't return messages, but keep interface compatible
     }))
 
     return NextResponse.json({
       sessions: transformed,
       count: transformed.length,
+      total: data.count || sessions.length,
       filter,
+      activeMinutes,
     })
 
   } catch (error) {
     console.error('[Orchestrator Sessions Error]', error)
+    const message = error instanceof Error ? error.message : 'Failed to list sessions'
     return NextResponse.json(
-      { error: 'Failed to list sessions' },
+      { error: message, sessions: [], count: 0 },
       { status: 500 }
     )
   }
 }
 
-// Extract a friendly display name from the session key
-function extractDisplayName(key: string): string {
-  // dashboard-hbx-lance -> HBx (Lance)
-  // agent:main:dashboard-hbx_sl1-robh -> HBx_SL1 (Robh)
-  const match = key.match(/dashboard-([^-]+)-([^-]+)$/i)
-  if (match) {
-    return `${match[1].toUpperCase()} (${capitalize(match[2])})`
-  }
-  
-  // Spawn sessions: spawn:task-123 -> Spawn Task
-  if (key.includes('spawn')) {
-    return 'Sub-Agent Task'
-  }
-  
-  return key.split(':').pop() || key
-}
+// Extract a friendly display name from the session
+function extractDisplayName(session: RawSession): string {
+  const key = session.key
 
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1)
+  // Main agent session
+  if (key === 'agent:main:main') return '🧠 HBx (Main)'
+
+  // Telegram sessions: agent:main:telegram:8391685290
+  const telegramMatch = key.match(/telegram:(\d+)$/)
+  if (telegramMatch) return `💬 Telegram (${telegramMatch[1].slice(-4)})`
+
+  // Cron sessions: agent:main:cron:uuid
+  if (key.includes('cron')) {
+    const label = session.label || 'Cron Job'
+    return `⏰ ${label}`
+  }
+
+  // Dashboard sessions
+  if (key.includes('dashboard')) return `📊 Dashboard`
+
+  // Spawn/subagent sessions
+  if (key.includes('spawn') || session.kind === 'isolated') {
+    return `⚡ Sub-Agent${session.label ? `: ${session.label}` : ''}`
+  }
+
+  // Webchat
+  if (key.includes('webchat')) return `🌐 Webchat`
+
+  // Fallback: clean up the key
+  const parts = key.split(':')
+  return parts[parts.length - 1] || key
 }

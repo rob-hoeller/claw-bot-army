@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 interface SessionListProps {
   onSelectSession: (session: SessionInfo) => void
   selectedSessionKey?: string
-  filter?: 'all' | 'subagents' | 'dashboard'
+  filter?: 'all' | 'subagents' | 'dashboard' | 'cron'
   refreshInterval?: number
 }
 
@@ -72,12 +72,21 @@ export function SessionList({
   }
 
   const getSessionIcon = (session: SessionInfo) => {
+    if (session.isCron) return <Clock className="h-4 w-4 text-green-400" />
     if (session.isSubAgent) return <Zap className="h-4 w-4 text-yellow-400" />
     if (session.isDashboard) return <Monitor className="h-4 w-4 text-blue-400" />
-    return <Bot className="h-4 w-4 text-purple-400" />
+    if (session.isMain) return <Bot className="h-4 w-4 text-purple-400" />
+    return <Bot className="h-4 w-4 text-white/50" />
   }
 
   const getSessionTypeBadge = (session: SessionInfo) => {
+    if (session.isCron) {
+      return (
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-300">
+          Cron
+        </span>
+      )
+    }
     if (session.isSubAgent) {
       return (
         <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300">
@@ -92,9 +101,16 @@ export function SessionList({
         </span>
       )
     }
+    if (session.isMain) {
+      return (
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
+          Main
+        </span>
+      )
+    }
     return (
-      <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
-        Main
+      <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 text-white/50">
+        {session.kind}
       </span>
     )
   }
@@ -177,11 +193,10 @@ export function SessionList({
                         {getSessionTypeBadge(session)}
                       </div>
                       
-                      {/* Last message preview */}
-                      {session.lastMessages.length > 0 && (
+                      {/* Model info */}
+                      {session.model && (
                         <p className="text-xs text-white/40 truncate mt-0.5">
-                          {session.lastMessages[session.lastMessages.length - 1].content.slice(0, 60)}
-                          {session.lastMessages[session.lastMessages.length - 1].content.length > 60 && '...'}
+                          {session.model}{session.aborted ? ' ⚠️ aborted' : ''}
                         </p>
                       )}
                       
