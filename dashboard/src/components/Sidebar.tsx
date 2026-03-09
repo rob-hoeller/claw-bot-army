@@ -13,6 +13,8 @@ import {
   BarChart3,
   ChevronDown,
   CheckSquare,
+  Calendar,
+  Brain,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -28,6 +30,8 @@ interface SidebarProps {
 const navItems = [
   { id: "dashboard", label: "Home", icon: Home },
   { id: "task-board", label: "Tasks", icon: CheckSquare },
+  { id: "calendar", label: "Calendar", icon: Calendar },
+  { id: "memories", label: "Memories", icon: Brain },
   { id: "mission-control", label: "Missions", icon: Rocket },
   { id: "agents", label: "Agents", icon: Bot },
   { id: "platform", label: "Platform", icon: BarChart3 },
