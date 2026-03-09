@@ -1,151 +1,86 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { exec } from 'child_process'
-import { promisify } from 'util'
-
-const execAsync = promisify(exec)
+import { createClient } from '@supabase/supabase-js'
 
 /**
  * GET /api/orchestrator/sessions
  * 
- * Lists all active OpenClaw sessions via `openclaw sessions --json`.
- * 
- * Query params:
- * - filter?: 'all' | 'subagents' | 'dashboard' | 'cron' - filter session types
- * - activeMinutes?: number - only sessions active in last N minutes (default: 60)
- * - limit?: number - max sessions to return (default: 50)
+ * Reads session snapshots from Supabase gateway_sessions table.
+ * Session data is synced from the VPS via scripts/sync-sessions.sh every 5 min.
  */
 
-interface RawSession {
-  key: string
-  sessionId: string
-  kind: string
-  channel?: string
-  model?: string
-  modelProvider?: string
-  totalTokens: number
-  inputTokens?: number
-  outputTokens?: number
-  updatedAt: number
-  ageMs?: number
-  agentId?: string
-  label?: string
-  systemSent?: boolean
-  abortedLastRun?: boolean
-  contextTokens?: number
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const filter = searchParams.get('filter') || 'all'
-    const activeMinutes = parseInt(searchParams.get('activeMinutes') || '60')
     const limit = parseInt(searchParams.get('limit') || '50')
 
-    // Use openclaw CLI to get sessions
-    const cmd = `openclaw sessions --json --all-agents${activeMinutes > 0 ? ` --active ${activeMinutes}` : ''}`
-    
-    const { stdout } = await execAsync(cmd, { 
-      timeout: 10000,
-      env: { ...process.env, PATH: `/home/ubuntu/.npm-global/bin:${process.env.PATH}` }
-    })
+    const supabase = createClient(supabaseUrl, supabaseKey)
 
-    const data = JSON.parse(stdout)
-    let sessions: RawSession[] = data.sessions || []
+    let query = supabase
+      .from('gateway_sessions')
+      .select('*')
+      .order('updated_at', { ascending: false })
+      .limit(limit)
 
     // Apply filters
     if (filter === 'subagents') {
-      sessions = sessions.filter(s => 
-        s.kind === 'isolated' || 
-        s.key.includes('spawn') ||
-        s.key.includes('subagent')
-      )
-    } else if (filter === 'dashboard') {
-      sessions = sessions.filter(s => 
-        s.key.includes('dashboard') ||
-        s.channel === 'webchat'
-      )
+      query = query.eq('is_sub_agent', true)
     } else if (filter === 'cron') {
-      sessions = sessions.filter(s => s.key.includes('cron'))
+      query = query.eq('is_cron', true)
+    } else if (filter === 'dashboard') {
+      query = query.or('kind.eq.webchat,display_name.ilike.%dashboard%')
     }
 
-    // Sort by most recently updated
-    sessions.sort((a, b) => b.updatedAt - a.updatedAt)
+    const { data: sessions, error } = await query
 
-    // Limit
-    sessions = sessions.slice(0, limit)
+    if (error) {
+      console.error('[Sessions Query Error]', error)
+      return NextResponse.json(
+        { error: error.message, sessions: [], count: 0 },
+        { status: 500 }
+      )
+    }
 
-    // Transform for UI
-    const transformed = sessions.map(s => ({
-      key: s.key,
-      sessionId: s.sessionId,
+    // Transform for UI compatibility
+    const transformed = (sessions || []).map(s => ({
+      key: s.session_key,
+      sessionId: s.session_key,
       kind: s.kind || 'unknown',
-      channel: s.channel || 'unknown',
+      channel: s.is_cron ? 'cron' : s.is_main ? 'telegram' : 'unknown',
       model: s.model || 'unknown',
-      modelProvider: s.modelProvider || '',
-      totalTokens: s.totalTokens || 0,
-      inputTokens: s.inputTokens || 0,
-      outputTokens: s.outputTokens || 0,
-      updatedAt: s.updatedAt,
-      ageMs: s.ageMs || 0,
-      agentId: s.agentId || 'main',
-      displayName: extractDisplayName(s),
-      label: s.label || '',
-      isSubAgent: s.kind === 'isolated' || s.key.includes('spawn'),
-      isCron: s.key.includes('cron'),
-      isDashboard: s.key.includes('dashboard') || s.channel === 'webchat',
-      isMain: s.key === 'agent:main:main' || s.key.endsWith(':telegram:8391685290'),
-      contextTokens: s.contextTokens || 0,
-      aborted: s.abortedLastRun || false,
-      lastMessages: [], // CLI doesn't return messages, but keep interface compatible
+      modelProvider: '',
+      totalTokens: s.total_tokens || 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      updatedAt: s.updated_at || 0,
+      ageMs: Date.now() - (s.updated_at || 0),
+      agentId: s.agent_id || 'main',
+      displayName: s.display_name || s.session_key,
+      label: '',
+      isSubAgent: s.is_sub_agent || false,
+      isCron: s.is_cron || false,
+      isDashboard: s.display_name?.includes('Dashboard') || false,
+      isMain: s.is_main || false,
+      contextTokens: 0,
+      percentUsed: s.percent_used || 0,
+      aborted: false,
+      lastMessages: [],
     }))
 
     return NextResponse.json({
       sessions: transformed,
       count: transformed.length,
-      total: data.count || sessions.length,
       filter,
-      activeMinutes,
     })
 
   } catch (error) {
     console.error('[Orchestrator Sessions Error]', error)
-    const message = error instanceof Error ? error.message : 'Failed to list sessions'
     return NextResponse.json(
-      { error: message, sessions: [], count: 0 },
+      { error: 'Failed to load sessions', sessions: [], count: 0 },
       { status: 500 }
     )
   }
-}
-
-// Extract a friendly display name from the session
-function extractDisplayName(session: RawSession): string {
-  const key = session.key
-
-  // Main agent session
-  if (key === 'agent:main:main') return '🧠 HBx (Main)'
-
-  // Telegram sessions: agent:main:telegram:8391685290
-  const telegramMatch = key.match(/telegram:(\d+)$/)
-  if (telegramMatch) return `💬 Telegram (${telegramMatch[1].slice(-4)})`
-
-  // Cron sessions: agent:main:cron:uuid
-  if (key.includes('cron')) {
-    const label = session.label || 'Cron Job'
-    return `⏰ ${label}`
-  }
-
-  // Dashboard sessions
-  if (key.includes('dashboard')) return `📊 Dashboard`
-
-  // Spawn/subagent sessions
-  if (key.includes('spawn') || session.kind === 'isolated') {
-    return `⚡ Sub-Agent${session.label ? `: ${session.label}` : ''}`
-  }
-
-  // Webchat
-  if (key.includes('webchat')) return `🌐 Webchat`
-
-  // Fallback: clean up the key
-  const parts = key.split(':')
-  return parts[parts.length - 1] || key
 }
