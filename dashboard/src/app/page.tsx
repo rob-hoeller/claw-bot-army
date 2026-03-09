@@ -12,6 +12,7 @@ import AgentsPage from "@/components/AgentsPage"
 import AppShell from "@/components/AppShell"
 import { FeatureBoard } from "@/components/features"
 import { PlatformPage } from "@/components/PlatformPage"
+import TaskBoardPage from "@/components/TaskBoardPage"
 import MissionControl from "@/components/mission/MissionControl"
 import { Loader2 } from "lucide-react"
 
@@ -138,6 +139,8 @@ export default function Home() {
         )
       case "agents":
         return <AgentsPage userEmail={user?.email} userMetadata={user?.user_metadata} />
+      case "task-board":
+        return <TaskBoardPage />
       case "platform":
         return <PlatformPage />
       case "settings":
