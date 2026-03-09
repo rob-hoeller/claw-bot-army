@@ -4,6 +4,9 @@
 
 set -euo pipefail
 
+# Ensure PATH includes openclaw
+export PATH="/home/ubuntu/.npm-global/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+
 # Load env
 source /home/ubuntu/.openclaw/workspace/dashboard/.env.local 2>/dev/null || true
 source /home/ubuntu/hbx-dashboard/.env.local 2>/dev/null || true
@@ -73,7 +76,7 @@ if not rows:
     sys.exit(0)
 
 # Upsert via REST API
-url = f'{supabase_url}/rest/v1/gateway_sessions'
+url = f'{supabase_url}/rest/v1/gateway_sessions?on_conflict=session_key'
 headers = {
     'apikey': service_key,
     'Authorization': f'Bearer {service_key}',
