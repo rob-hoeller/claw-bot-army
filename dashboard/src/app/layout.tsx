@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import { Inter } from "next/font/google"
 import { Toaster } from "sonner"
+import { ThemeProvider } from "@/components/theme-provider"
 import "./globals.css"
 
 const inter = Inter({
@@ -28,10 +29,30 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                const theme = localStorage.getItem('hbx-theme') || 'system';
+                let resolvedTheme = theme;
+                
+                if (theme === 'system') {
+                  resolvedTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                }
+                
+                document.documentElement.classList.add(resolvedTheme);
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={`${inter.variable} font-sans antialiased`}>
-        {children}
-        <Toaster theme="dark" richColors position="top-right" />
+        <ThemeProvider defaultTheme="system" storageKey="hbx-theme">
+          {children}
+          <Toaster richColors position="top-right" />
+        </ThemeProvider>
       </body>
     </html>
   )
